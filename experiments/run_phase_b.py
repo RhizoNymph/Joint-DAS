@@ -46,6 +46,7 @@ def _build_config(args: argparse.Namespace) -> JointConfig:
         device=args.device,
         freeze_rotation=(args.method == "random_rotation"),
         eval_every=max(1, args.steps // 10),
+        lambda_sparse=args.lambda_sparse,
     )
 
 
@@ -121,6 +122,12 @@ def main() -> None:
     parser.add_argument("--k-max", type=int, default=4)
     parser.add_argument("--v", type=int, default=2)
     parser.add_argument("--local-files-only", action="store_true")
+    parser.add_argument(
+        "--lambda-sparse",
+        type=float,
+        default=0.1,
+        help="weight of the aligned-dims sparsity penalty (0.1 is too weak at LM scale)",
+    )
     parser.add_argument(
         "--no-refit",
         action="store_true",
