@@ -15,5 +15,10 @@ from __future__ import annotations
 
 from jdas.tasks.boolean_comp import BooleanCompositionTask
 from jdas.tasks.hierarchical_equality import HierarchicalEqualityTask
+from jdas.tasks.price_tagging import PriceTaggingTask
 
-__all__ = ["BooleanCompositionTask", "HierarchicalEqualityTask"]
+__all__ = [
+    "BooleanCompositionTask",
+    "HierarchicalEqualityTask",
+    "PriceTaggingTask",
+]
