@@ -25,7 +25,9 @@ Overview:
 Features Index:
   jdas_core:
     description: Rotation, learned causal model, interventions, trainers, eval.
-    entry_points: [src/jdas/training.py, src/jdas/eval.py]
+    entry_points: [src/jdas/rotation.py, src/jdas/causal_model.py,
+      src/jdas/intervention.py, src/jdas/training.py, src/jdas/eval.py,
+      experiments/run_phase_a.py]
     depends_on: []
     doc: docs/features/jdas_core.md
   toy_tasks:
