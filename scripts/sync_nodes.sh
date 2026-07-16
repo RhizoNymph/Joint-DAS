@@ -13,7 +13,8 @@ for node in "${NODES[@]}"; do
   ssh "$node" "mkdir -p $REMOTE_DIR"
   rsync -az --delete \
     --exclude '.git' --exclude '.venv' --exclude '__pycache__' \
-    --exclude 'experiments/results' --exclude '*.egg-info' \
+    --exclude 'experiments/results' --exclude 'experiments/logs' \
+    --exclude 'experiments/toy_ckpts' --exclude '*.egg-info' \
     "$REPO_DIR/" "$node:$REMOTE_DIR/"
   ssh "$node" "cd $REMOTE_DIR && ~/.local/bin/uv sync --quiet" &
 done
