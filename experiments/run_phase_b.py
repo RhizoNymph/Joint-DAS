@@ -121,6 +121,11 @@ def main() -> None:
     parser.add_argument("--k-max", type=int, default=4)
     parser.add_argument("--v", type=int, default=2)
     parser.add_argument("--local-files-only", action="store_true")
+    parser.add_argument(
+        "--no-refit",
+        action="store_true",
+        help="skip the freeze-and-refit pass after joint training (halves runtime)",
+    )
     parser.add_argument("--out", type=str, default="results.json")
     args = parser.parse_args()
 
@@ -173,7 +178,7 @@ def main() -> None:
             trainer = JointTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
             _add_recovery(result, causal_model, task, config)
-            if args.method == "joint":
+            if args.method == "joint" and not args.no_refit:
                 refit = refit_rotation(site, task, causal_model, config)
                 result["refit_iia_1"] = refit["refit_iia_1"]
                 result["refit_iia_2"] = refit["refit_iia_2"]
