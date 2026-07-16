@@ -299,8 +299,10 @@ class _BaseTrainer:
             generator=self.eval_generator,
         )
         return {
-            "iia_1": iia_scores.get(1, 0.0),
-            "iia_2": iia_scores.get(2, 0.0),
+            # None (JSON null) when a swap size is inapplicable (e.g. k_max=1
+            # models have no |I|=2 interventions) — 0.0 would fake a failure.
+            "iia_1": iia_scores.get(1),
+            "iia_2": iia_scores.get(2),
             "effective_k": eff_k,
             "aligned_dims": float(self.layout.total_aligned_dims().item()),
             "hard_widths": self.layout.hard_widths().tolist(),
