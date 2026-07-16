@@ -97,18 +97,17 @@ def main() -> None:
     config = _build_config(args)
 
     d = site.d
-    k_max = args.k_max
     input_dim = _infer_input_dim(task, args)
     rotation = OrthogonalRotation(d, freeze=config.freeze_rotation)
-    layout = SubspaceLayout(d, k_max, init_width=max(1.0, d / (2 * k_max)))
 
     result: dict[str, object] = {"config": {**vars(args)}, "config_dataclass": asdict(config)}
 
     match args.method:
         case "joint" | "random_rotation":
             causal_model = LearnedCausalModel(
-                input_dim=input_dim, k_max=k_max, v=args.v, n_labels=task.n_labels
+                input_dim=input_dim, k_max=args.k_max, v=args.v, n_labels=task.n_labels
             )
+            layout = _make_layout(d, causal_model.k_max)
             trainer = JointTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
             _add_recovery(result, causal_model, task, config)
@@ -119,10 +118,12 @@ def main() -> None:
                 result["refit_iia_2"] = refit["refit_iia_2"]
         case "das_true":
             causal_model = _true_fixed_model(task, args)
+            layout = _make_layout(d, causal_model.k_max)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
         case "das_wrong":
             causal_model = _wrong_fixed_model(task, args)
+            layout = _make_layout(d, causal_model.k_max)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
         case _:
@@ -135,6 +136,11 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, indent=2))
     print(f"wrote {out_path}")
+
+
+def _make_layout(d: int, k: int) -> SubspaceLayout:
+    """Layout sized to the causal model's variable count."""
+    return SubspaceLayout(d, k, init_width=max(1.0, d / (2 * k)))
 
 
 def _infer_input_dim(task, args: argparse.Namespace) -> int:
@@ -155,9 +161,11 @@ def _add_recovery(result: dict, causal_model, task, config: JointConfig) -> None
 
 def _true_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
     """FixedCausalModel using the task's ground-truth variables + label rule."""
-    label_fn = getattr(task, "label_from_variables", None)
+    label_fn = getattr(task, "label_from_variables", None) or getattr(
+        task, "gt_label_fn", None
+    )
     if label_fn is None:
-        raise SystemExit("task does not expose label_from_variables for das_true")
+        raise SystemExit("task exposes neither label_from_variables nor gt_label_fn")
     return FixedCausalModel(
         gt_variables_fn=task.gt_variables,
         label_fn=label_fn,
@@ -173,7 +181,9 @@ def _wrong_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
     def gt_vars(inputs: torch.Tensor) -> torch.Tensor:
         # Wrong hypothesis: a single output-copy variable Z = y (the label).
         vals = task.gt_variables(inputs)
-        label_fn = getattr(task, "label_from_variables")
+        label_fn = getattr(task, "label_from_variables", None) or getattr(
+            task, "gt_label_fn"
+        )
         return label_fn(vals).unsqueeze(1)
 
     def label_fn(vals: torch.Tensor) -> torch.Tensor:

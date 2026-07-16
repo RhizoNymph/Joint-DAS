@@ -84,6 +84,11 @@ def iia(
     """
     results: dict[int, float] = {}
     device = rotation.matrix.device
+    # Swap sizes beyond the model's variable count are undefined; skip them
+    # (e.g. a k=1 output-copy baseline has no |I|=2 interventions).
+    swap_sizes = tuple(s for s in swap_sizes if s <= layout.k_max)
+    if not swap_sizes:
+        raise EvalError(f"no valid swap sizes for k_max {layout.k_max}")
     for swap_size in swap_sizes:
         correct = 0
         total = 0
