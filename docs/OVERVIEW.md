@@ -12,7 +12,8 @@ Overview:
     - models (src/jdas/models): toy networks (MLP/transformer) and their
       training; HF model wrappers for Phase B.
     - experiments (experiments/): config-driven entry points writing JSON
-      results.
+      results (run_phase_a, run_phase_b, screen_lm, introspect_phase_a) plus
+      analyze.py (aggregates JSON -> summary md + docs/assets plots).
     - scripts (scripts/): GPU node sync/launch/collect (node0/1/2, 1x3090 each).
   data_flow: >
     Task generates (base, sources, intervention-spec, labels) batches →
@@ -36,7 +37,10 @@ Features Index:
     depends_on: [jdas_core]
     doc: docs/features/toy_tasks.md
   lm_phase:
-    description: Phase B on a small HF LM (price tagging task).
-    entry_points: [src/jdas/tasks/price_tagging.py, experiments/]
+    description: >
+      Phase B on a small HF LM (price tagging task). Screened Qwen2.5-1.5B-Instruct
+      (0.5B was degenerate) at template 3 plain, ~81% zero-shot; runs at layer 17.
+    entry_points: [src/jdas/tasks/price_tagging.py, src/jdas/models/hf.py,
+      experiments/run_phase_b.py, experiments/screen_lm.py]
     depends_on: [jdas_core]
     doc: docs/features/lm_phase.md
