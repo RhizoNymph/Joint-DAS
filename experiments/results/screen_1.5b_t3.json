@@ -1,0 +1,42 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n": 800,
+  "results": [
+    {
+      "template_id": 3,
+      "chat": false,
+      "accuracy": 0.8125,
+      "per_region": {
+        "below": 0.8257575757575758,
+        "inside": 0.7126865671641791,
+        "above": 0.8992537313432836
+      },
+      "frac_yes_pred": 0.33,
+      "n": 800
+    },
+    {
+      "template_id": 3,
+      "chat": true,
+      "accuracy": 0.75125,
+      "per_region": {
+        "below": 0.9015151515151515,
+        "inside": 0.3619402985074627,
+        "above": 0.9925373134328358
+      },
+      "frac_yes_pred": 0.15625,
+      "n": 800
+    }
+  ],
+  "best": {
+    "template_id": 3,
+    "chat": false,
+    "accuracy": 0.8125,
+    "per_region": {
+      "below": 0.8257575757575758,
+      "inside": 0.7126865671641791,
+      "above": 0.8992537313432836
+    },
+    "frac_yes_pred": 0.33,
+    "n": 800
+  }
+}
