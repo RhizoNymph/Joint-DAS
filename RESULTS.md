@@ -33,9 +33,12 @@ detail in `experiments/results/phase_a_analysis.md` and the Phase B JSONs under
 - The 81% screening ceiling matters: N itself is only ~81% accurate on the task, so
   IIA measured against a GT-shaped H is capped — some of the Phase B shortfall is
   the model, not the method.
-- Phase B `joint` at layer 17 had **not produced a result file at time of writing**
-  (see §4). The key open question — whether joint finds a factored k_eff≥2,
-  partial-width solution at LM scale or also collapses — is unresolved.
+- Phase B `joint` **also collapsed** at LM scale: at layers 14/17/20 it found the
+  same whole-space single-variable solution as the control (IIA 0.78–0.84, widths
+  [1536,0,0,0]), and a 20× sparsity diagnostic (λ=2.0) did not escape it — the
+  normalized penalty's per-dim gradient (λ/d) is negligible at d=1536. Factored
+  causal representations were **not** demonstrated on the LM; the actionable fix
+  (hard width caps / per-dim penalty / width annealing) is identified but unrun.
 
 ## 2. What was built
 
@@ -177,14 +180,18 @@ Caveat: **81% is a ceiling on IIA, not a floor.** N itself is imperfect on the t
 so IIA measured against a GT-shaped H (which assumes N solves it) is capped — some of
 the shortfall below is the model, not the alignment.
 
-Runs: steps 2000, batch 32, n_sources 2, k_max 4, v 2, lambda_sparse 0.1, layer 17,
-seed 0, template 3 plain. d = 1536.
+Runs: batch 32, n_sources 2, k_max 4, v 2, seed 0, template 3 plain, d = 1536.
+Defaults: steps 2000, layer 17, lambda_sparse 0.1; deviations noted per row
+(the l14/l20 sweep and the λ=2.0 diagnostic ran shorter, without refit).
 
 | method | iia_1 | iia_2 | k_eff | hard widths | recovery | reading |
 |---|---|---|---|---|---|---|
 | das_true | 0.645 | 0.547 | 1 | [1536, 0] | – | GT (L,U) factorisation **not found**; layout collapsed to one full-width variable |
 | random_rotation | 0.805 | 0.832 | 1 | [1536, 0, 0, 0] | 0.711 | Absorbed the **entire** residual stream into one variable — rediscovered full activation patching |
-| joint | – | – | – | – | – | **(still running / no result file at time of writing)** |
+| joint (l17) | 0.777 | 0.816 | 1 | [1536, 0, 0, 0] | 0.704 | Collapsed to whole-space single variable — matches the control within noise |
+| joint (l14, 1200 st.) | 0.828 | 0.801 | 0 | [1536, 0, 0, 0] | 0.683 | Collapsed; swaps rarely flip outputs (k_eff 0) |
+| joint (l20, 1200 st.) | 0.820 | 0.844 | 1 | [1536, 0, 0, 0] | 0.718 | Collapsed |
+| joint (l17, λ_sparse=2.0, 800 st.) | 0.797 | 0.824 | 1 | [1536, 0, 0, 0] | 0.717 | **Still collapsed** — 20× sparsity did not bite |
 
 **`das_true`** (iia_1 0.645, iia_2 0.547). Even given the *true* two-boolean
 skeleton `L=(Z≥X)`, `U=(Z≤Y)` with an AND decoder, the layout (k_max = 2 for this
@@ -204,14 +211,21 @@ version of the Phase A vacuity result, but with a sharper diagnosis: at d = 1536
 The sparsity term (aligned_dims/d = 1.0 throughout, loss_sparse pinned at 1.0) never
 bites. This is the single most actionable finding for scaling the method up.
 
-**`joint`** — no `pt_joint_*.json` had appeared in `experiments/results/phase_b/` by
-the time this document was written (only `pt_das_true_l17_s0.json` and
-`pt_random_rotation_l17_s0.json` exist). The decisive question stands open: does the
-joint method — with both Q and boundaries free — escape the whole-space collapse and
-find a factored (k_eff ≥ 2, partial-width) solution, or does the same weak sparsity
-let it collapse too? Given that `random_rotation` already collapses with the same
-`lambda_sparse`, the prior is that plain joint at these settings would also need
-stronger sparsity to be forced into a factored solution.
+**`joint`** — the decisive question is now answered, negatively but cleanly: at all
+three layers swept (14, 17, 20) the joint method **also collapsed** to the
+whole-space single-variable solution (widths [1536, 0, 0, 0]), with IIA
+(0.78–0.84) statistically indistinguishable from the random-rotation control. Its
+refit IIA (l17: 0.777/0.813) confirms the collapse is stable, and recovery ~0.70
+means the surviving variable tracks neither L nor U specifically. A targeted
+diagnostic with `--lambda-sparse 2.0` (20× default, 800 steps) still collapsed:
+the penalty λ·(aligned_dims/d) has per-dimension gradient λ/d ≈ 0.0013 even at
+λ=2, which is negligible against the intervention loss. **At LM scale the current
+sparsity term provides essentially no anti-collapse pressure.** The right fixes
+are structural, not scalar: hard per-variable width caps (e.g. ≤ d/4), a per-dim
+rather than normalized penalty, or width annealing from small — none of which
+could be rerun before morning. Note the collapse is not silent failure: the
+framework's own diagnostics (k_eff, widths, control comparison) flag it — on the
+toys the same diagnostics correctly *pass* the joint runs.
 
 ## 5. Interpretation
 
