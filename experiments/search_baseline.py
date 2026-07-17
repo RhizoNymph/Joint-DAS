@@ -117,7 +117,8 @@ def _build_pair_model(
 
     # Clean task accuracy of the fitted lookup on the fit set.
     preds = torch.tensor(
-        [table.get((int(a), int(b)), global_majority) for a, b in zip(v1, v2, strict=True)]
+        [table.get((int(a), int(b)), global_majority) for a, b in zip(v1, v2, strict=True)],
+        device=fit_labels.device,
     )
     clean_acc = float((preds == fit_labels).float().mean())
 
