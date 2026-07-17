@@ -64,6 +64,12 @@ detail in `experiments/results/phase_a_analysis.md` and the Phase B JSONs under
   search independently confirms it: **E1+E2 ranks LAST** of 15 pairs (iia_1 0.559)
   while composite bases (AND+OR, OR+NAND) hit perfect IIA 1.000. Convergent evidence
   that the literal atoms are not a valid DAS alignment at that site; the composites are.
+- **[N2] Wave B corrects Night 1: the hand-specified (L,U) model works on the LM
+  once collapse is fixed.** Capped `das_true` at layer 17 reaches iia_1 0.891 /
+  iia_2 0.922 with two clean 16-dim subspaces — Night 1's failure was the sparsity
+  bug, not the model. Capped joint replicates across seeds (0.855/0.87, k_eff 4)
+  but prefers a redundant 4-variable solution: given the right hypothesis, classic
+  DAS wins; joint's value is not needing one.
 - **[N2] Wrong composition laws are now falsified.** A real k=2 wrong hypothesis
   (`das_wrong_and`: AND in place of the true XNOR/OR) sits **at or below its analytic
   agreement ceiling** in all four groups (hier 0.568/0.622, bool 0.814/0.720 vs
@@ -395,13 +401,29 @@ framework demonstrably falsifies a wrong-but-plausible causal law under composed
 
 ![wrong-AND vs ceiling](docs/assets/night2_wrong_and.png)
 
-### N2.5 — Wave-B status
+### N2.5 — Wave B: the hand-specified model works once collapse is fixed
 
-Three follow-up runs (`pt_das_true_l17_capped.json` — can the hand-specified (L,U)
-work when collapse is prevented; `pt_joint_l17_capped_s1.json` — replicate stability;
-`pt_joint_l10_zdigits_capped.json` — mid-layer position probe) were **still running**
-when this analysis was written and are not folded in. The capped-LM plot and summary
-table auto-include the `das_true (capped)` bar once that file lands.
+| run | iia_1 | iia_2 | k_eff | widths | aligned | recovery |
+|---|---|---|---|---|---|---|
+| das_true l17 capped | **0.891** | **0.922** | 2 | [16, 16] | 32/1536 | – |
+| joint l17 capped seed 1 | 0.855 | 0.875 | 4 | [15,14,15,14] | 58 | 0.676 |
+| joint l10 z_digits capped | 0.770 | 0.785 | 4 | [14,14,14,14] | 56 | 0.733 |
+
+Three conclusions:
+
+1. **Night 1's `das_true` verdict was an artifact of the collapse bug.** With the
+   cap + per-dim penalty, classic DAS with the hand-specified (L, U) model reaches
+   iia_1 0.891 / iia_2 0.922 with two clean disjoint 16-dim subspaces — near the
+   ~0.81-faithfulness ceiling of the network itself, and on *composed* swaps. The
+   GT factorisation **is** representable at layer 17; Night 1 just couldn't find it
+   with a dead sparsity gradient.
+2. **The capped joint result replicates** (seed 1: 0.855/0.875 vs seed 0:
+   0.855/0.863, both k_eff = 4, ~58–59 dims).
+3. **Given the right hypothesis, classic DAS beats joint on the LM** (0.891/0.922
+   in 32 dims vs 0.855/0.87 in ~59 dims): joint pays for hypothesis-freedom with a
+   redundant 4-variable solution and partial recovery (~0.68–0.72) — the LM-scale
+   analogue of the toy overcompleteness finding (N2.3). The mid-layer z-digits
+   probe (l10) is non-vacuous but weaker (0.770/0.785).
 
 ## 6. Limitations & next steps
 
@@ -424,11 +446,13 @@ table auto-include the `das_true (capped)` bar once that file lands.
   research question from *which* variables to *whether some valid factorisation* is
   representable, but it also means recovery-to-GT is inherently seed/site-dependent.
 
+**Also closed by wave B (N2.5):**
+- **The (L,U) factorisation exists at layer 17.** Capped `das_true` finds it at
+  0.891/0.922 in two 16-dim subspaces. What remains open is why *joint* prefers a
+  redundant 4-variable solution over that available minimal one (recovery ~0.68–0.72)
+  — pruning pressure, not representability, is now the gap.
+
 **Still open:**
-- **No clean (L,U) recovery on the LM.** The capped joint run is non-vacuous
-  (k_eff 4, beats control) but recovery is ~0.72 — the live variables track neither
-  L nor U cleanly. Whether a genuinely L/U-aligned solution exists at layer 17 is
-  unresolved; the wave-B `das_true (capped)` run (N2.5) is the direct test.
 - **Redundant-variable pruning still weak.** Even the successful capped LM run and
   the toy seed runs leave overcomplete or ~equal-width variables; sparsity does not
   drive solutions to dimension-minimal form.
@@ -439,11 +463,9 @@ table auto-include the `das_true (capped)` bar once that file lands.
 - **Toy N is only 3 layers**; depth sweep is coarse.
 
 Next steps:
-- **Finish wave B** (`pt_das_true_l17_capped`, `_capped_s1`, `l10_zdigits_capped`):
-  test whether the hand-specified (L,U) is representable once collapse is prevented,
-  confirm seed stability of the capped solution, and probe a mid-layer position.
-- **Push for cleaner recovery** on the LM: stronger per-dim sparsity to minimise
-  widths, and a layer sweep to find where L/U (if anywhere) become linearly disjoint.
+- **Close the joint-vs-das_true gap on the LM**: stronger pruning (higher per-dim λ,
+  width annealing toward zero, or an explicit variable-count penalty) so joint can
+  land on the minimal (L,U)-style solution that das_true proves exists at layer 17.
 - **Report the basis-selection structure** as a first-class result rather than a
   limitation — enumerate the valid bases per site and characterise which the joint
   method prefers.
