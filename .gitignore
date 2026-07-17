@@ -10,3 +10,4 @@ wheels/
 .venv
 experiments/results/
 experiments/toy_ckpts/
+experiments/logs/
