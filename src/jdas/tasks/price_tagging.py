@@ -100,6 +100,12 @@ class PriceTaggingTask:
         use_chat_template: if ``True`` render the question through the
             tokenizer's chat template with an ``"Answer:"`` assistant prefix;
             else use the plain rendered string.
+        position: intervention-position mode passed to the site.  ``"last"``
+            (default) captures/injects at the final sequence position (the
+            historical behavior; produces packed ``(B, 2, T)``).  ``"z_digits"``
+            captures/injects at the **last token of the item amount ``Z``** in
+            each prompt, producing packed ``(B, 3, T)`` with a per-example
+            position channel (see :mod:`jdas.models.hf`).
     """
 
     n_labels: int = 2
@@ -112,15 +118,21 @@ class PriceTaggingTask:
         device: str | torch.device = "cpu",
         *,
         use_chat_template: bool = False,
+        position: str = "last",
     ) -> None:
         if not (0 <= template_id < len(_TEMPLATES)):
             raise PriceTaggingError(
                 f"template_id {template_id} out of range [0, {len(_TEMPLATES)})"
             )
+        if position not in ("last", "z_digits"):
+            raise PriceTaggingError(
+                f"position must be 'last' or 'z_digits', got {position!r}"
+            )
         self.tokenizer = tokenizer
         self.template_id = template_id
         self.device = torch.device(device)
         self.use_chat_template = use_chat_template
+        self.position = position
         self.name = "price_tagging"
         # Feature dim consumed by the learned causal model: (X, Y, Z) normalized.
         self.input_dim = 3
@@ -199,11 +211,20 @@ class PriceTaggingTask:
         return x, y, z
 
     def _tokenize(
-        self, prompts: list[str], device: torch.device
+        self,
+        prompts: list[str],
+        device: torch.device,
+        unpadded_positions: list[int] | None = None,
     ) -> torch.Tensor:
-        """Tokenize prompts with left padding; return packed ``(N, 2, T)``.
+        """Tokenize prompts with left padding; return packed ``(N, 2, T)`` or
+        ``(N, 3, T)``.
 
-        Channel 0 = ``input_ids``, channel 1 = ``attention_mask``.
+        Channel 0 = ``input_ids``, channel 1 = ``attention_mask``.  When
+        ``unpadded_positions`` is provided (an index into each prompt's *own*
+        token sequence) a third channel is added holding the corresponding
+        **left-padding-adjusted** position broadcast across the time axis: for a
+        prompt of ``L`` tokens padded to ``T``, unpadded index ``j`` maps to
+        ``T - L + j``.
         """
         enc = self.tokenizer(
             prompts,
@@ -212,16 +233,56 @@ class PriceTaggingTask:
         )
         ids = enc["input_ids"].to(device)
         mask = enc["attention_mask"].to(device)
-        return torch.stack([ids, mask], dim=1)  # (N, 2, T)
+        if unpadded_positions is None:
+            return torch.stack([ids, mask], dim=1)  # (N, 2, T)
+
+        t = ids.shape[-1]
+        # Under left padding each prompt occupies the rightmost L = sum(mask)
+        # columns, so unpadded index j lands at column (T - L) + j.
+        lengths = mask.sum(dim=1)  # (N,) tokens per prompt
+        offsets = t - lengths  # (N,) left-pad width
+        pos = offsets + torch.tensor(
+            unpadded_positions, device=device, dtype=offsets.dtype
+        )
+        pos = pos.clamp_(0, t - 1)
+        pos_channel = pos.view(-1, 1).expand(-1, t)  # (N, T) broadcast
+        return torch.stack([ids, mask, pos_channel], dim=1)  # (N, 3, T)
+
+    def _z_final_token_index(self, prompt: str, item: float) -> int:
+        """Index (into ``prompt``'s own token sequence) of the last token of ``Z``.
+
+        Located robustly across tokenizers: find the character span of the last
+        occurrence of the rendered ``Z`` string in ``prompt`` (the item amount
+        always appears after lo/hi), then tokenize the prefix ending at that span
+        and return ``len(prefix_tokens) - 1``.  Falls back to the final token if
+        the substring cannot be located.
+        """
+        z_str = _fmt(item)
+        end = prompt.rfind(z_str)
+        if end < 0:
+            enc = self.tokenizer.encode(prompt, add_special_tokens=False)
+            return max(0, len(enc) - 1)
+        end += len(z_str)  # char index just past Z
+        prefix = prompt[:end]
+        prefix_ids = self.tokenizer.encode(prefix, add_special_tokens=False)
+        return max(0, len(prefix_ids) - 1)
 
     def _render_batch(
         self, x: torch.Tensor, y: torch.Tensor, z: torch.Tensor, device: torch.device
     ) -> torch.Tensor:
-        """Render + tokenize a batch of triples to packed ``(N, 2, T)`` tensors."""
+        """Render + tokenize a batch of triples to packed ``(N, 2, T)`` tensors,
+        or ``(N, 3, T)`` when ``position == "z_digits"``.
+        """
         prompts = [
             self._wrap_prompt(self.render_prompt(float(x[i]), float(y[i]), float(z[i])))
             for i in range(x.shape[0])
         ]
+        if self.position == "z_digits":
+            positions = [
+                self._z_final_token_index(prompts[i], float(z[i]))
+                for i in range(x.shape[0])
+            ]
+            return self._tokenize(prompts, device, unpadded_positions=positions)
         return self._tokenize(prompts, device)
 
     def _labels_from_xyz(
@@ -261,13 +322,13 @@ class PriceTaggingTask:
         # base and sources share the same padded length T.
         n_total = batch_size * (1 + m)
         x, y, z = self._sample_xyz(n_total, generator, device)
-        packed = self._render_batch(x, y, z, device)  # (B*(1+m), 2, T)
+        packed = self._render_batch(x, y, z, device)  # (B*(1+m), C, T), C in {2,3}
         labels = self._labels_from_xyz(x, y, z)  # (B*(1+m),)
 
-        t = packed.shape[-1]
-        packed = packed.reshape(batch_size, 1 + m, 2, t)
-        base_inputs = packed[:, 0]  # (B, 2, T)
-        source_inputs = packed[:, 1:]  # (B, m, 2, T)
+        c, t = packed.shape[1], packed.shape[-1]
+        packed = packed.reshape(batch_size, 1 + m, c, t)
+        base_inputs = packed[:, 0]  # (B, C, T)
+        source_inputs = packed[:, 1:]  # (B, m, C, T)
         labels = labels.reshape(batch_size, 1 + m)
         base_labels = labels[:, 0]  # (B,)
         source_labels = labels[:, 1:]  # (B, m)
@@ -295,9 +356,10 @@ class PriceTaggingTask:
         Returns:
             ``(B, 3)`` float in ``[0, 1]``: ``[X, Y, Z] / 10``.  Deterministic.
         """
-        if inputs.dim() != 3 or inputs.shape[1] != 2:
+        if inputs.dim() != 3 or inputs.shape[1] not in (2, 3):
             raise PriceTaggingError(
-                f"causal_features expects packed (B, 2, T), got {tuple(inputs.shape)}"
+                f"causal_features expects packed (B, 2, T) or (B, 3, T), got "
+                f"{tuple(inputs.shape)}"
             )
         ids = inputs[:, 0]  # (B, T)
         mask = inputs[:, 1]  # (B, T)

@@ -52,7 +52,11 @@ method in `docs/DESIGN.md`.
    - symmetric term (weight `lambda_cf_symmetric=0.5`) = CE(H counterfactual
      logits, N's hard intervened label) — trains H's encoders from N's behavior.
    - `L_task` = CE(H.predict, true label) on clean base + source inputs.
-   - `L_sparse` = `lambda_sparse * total_aligned_dims / d`.
+   - `L_sparse` = `lambda_sparse * total_aligned_dims / d` when
+     `sparse_mode="normalized"` (default), or `lambda_sparse *
+     total_aligned_dims` when `sparse_mode="per_dim"` (unnormalized, so the
+     per-dimension gradient is `lambda_sparse` itself — bites at large `d` where
+     the normalized `lambda/d` is negligible, e.g. `d=1536`).
 5. AdamW updates rotation + layout (+ H for joint). Temperatures (`tau_g` for the
    ST softmax, `tau_m` for masks) anneal `start -> end` (linear/cosine) over
    `steps`.
@@ -63,9 +67,12 @@ method in `docs/DESIGN.md`.
 
 - Rotation: `rotate(h) = h @ Q.T` (== `Linear(h)`); `unrotate(r) = r @ Q`;
   `unrotate(rotate(h)) == h`. Aligned coordinate `p` is `h @ Q[p]` (row `p`).
-- Subspace: widths `w_i = softplus(raw_i) >= 0`; boundaries `c_i = sum_{j<=i} w_j`
-  clamped to `d`; variable `i` owns rotated dims `[c_i, c_{i+1})`. Blocks are
-  cumulative and disjoint by construction, so masks never overlap.
+- Subspace: widths `w_i = softplus(raw_i) >= 0` (unbounded, default) or `w_i =
+  max_width * sigmoid(raw_i) < max_width` (bounded, when `max_width` is set —
+  a hard per-variable width cap that forbids a single variable owning the whole
+  space); boundaries `c_i = sum_{j<=i} w_j` clamped to `d`; variable `i` owns
+  rotated dims `[c_i, c_{i+1})`. Blocks are cumulative and disjoint by
+  construction, so masks never overlap.
 - `source_assignment`: `(B, k_max)` long in `[-1, m)`; `-1` = keep base, `j>=0` =
   take variable `i` (and its subspace) from source `j`. (Matches `types.py`.)
 
@@ -73,17 +80,24 @@ method in `docs/DESIGN.md`.
 
 - `src/jdas/rotation.py` — `OrthogonalRotation(d, freeze=)` (orthogonal-
   parametrized `Linear`, `rotate`/`unrotate`/`set_matrix`), `SubspaceLayout(d,
-  k_max, init_width, min_temp, max_temp)` (`soft_masks`, `hard_masks`,
-  `hard_widths`, `total_aligned_dims`, `set_temperature`). Exception:
-  `RotationError`.
+  k_max, init_width, max_width=None, min_temp, max_temp)` (`widths`,
+  `soft_masks`, `hard_masks`, `hard_widths`, `total_aligned_dims`,
+  `set_temperature`). `max_width` selects the bounded sigmoid parameterization
+  (requires `init_width < max_width`). Exception: `RotationError`.
 - `src/jdas/causal_model.py` — `LearnedCausalModel` (encoders `g_i`, decoder,
   `variables`/`predict`/`counterfactual_predict`, `set_temperature`),
   `FixedCausalModel(gt_variables_fn, label_fn, k, v, n_labels)`. Straight-through
   helper `_straight_through_onehot`. Exception: `CausalModelError`.
 - `src/jdas/intervention.py` — `interchange(site, rotation, layout, batch,
   hard=)`. Exception: `InterventionError`.
-- `src/jdas/training.py` — `JointConfig` (dataclass), `JointTrainer`,
-  `DASTrainer`, `refit_rotation`. Exception: `TrainingError`.
+- `src/jdas/training.py` — `JointConfig` (dataclass; includes `sparse_mode`
+  `"normalized"|"per_dim"`), `JointTrainer`, `DASTrainer`, `refit_rotation`,
+  `save_checkpoint(path, rotation, layout, causal_model, config, extra)` /
+  `load_checkpoint(path, feature_fn=None, map_location=)` (torch.save of
+  state_dicts + JSON meta carrying `d`, layout `k_max`/`max_width`/temps, and
+  learned-model `input_dim`/`v`/`n_labels`/encoder+decoder widths;
+  `FixedCausalModel` has no state and is rebuilt by the caller). Exceptions:
+  `TrainingError`, `CheckpointError`.
 - `src/jdas/eval.py` — `iia`, `recovery` (+ `RecoveryResult`), `effective_k`.
   Exception: `EvalError`.
 - `src/jdas/__init__.py` — public re-exports.
@@ -99,7 +113,10 @@ method in `docs/DESIGN.md`.
 - `Q @ Q.T == I` for all parameter values (orthogonal parametrization),
   preserved across optimizer steps.
 - Subspace blocks are contiguous, disjoint, and inside `[0, d]`. Soft-mask column
-  sums `<= 1`. Soft masks -> hard masks as `tau_m -> 0`.
+  sums `<= 1`. Soft masks -> hard masks as `tau_m -> 0`. With `max_width` set,
+  every hard/soft width `<= max_width` for any parameter value.
+- Checkpoint round-trip is exact: reloaded `Q`, hard widths, and causal-model
+  predictions match the saved modules (validated by tests).
 - `variables()` are exact one-hots in the forward pass; gradients follow
   `softmax(logits / tau_g)`.
 - `interchange` must not detach source hiddens from `Q`.

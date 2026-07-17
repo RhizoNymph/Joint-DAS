@@ -25,8 +25,10 @@ from ``*_start`` to ``*_end`` over training (linear or cosine).
 
 from __future__ import annotations
 
+import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
+from pathlib import Path
 
 import torch
 from torch import nn
@@ -59,6 +61,12 @@ class JointConfig:
     lr_causal: float | None = None  # defaults to lr
     lambda_task: float = 1.0
     lambda_sparse: float = 0.1
+    # Sparsity penalty parameterization:
+    #   "normalized" -> L_sparse = total_aligned_dims / d  (per-dim grad lambda/d)
+    #   "per_dim"    -> L_sparse = total_aligned_dims       (per-dim grad lambda)
+    # At LM scale (d=1536) "normalized" is too weak; "per_dim" gives a per-dim
+    # gradient of lambda itself so the penalty bites regardless of d.
+    sparse_mode: str = "normalized"
     lambda_cf_symmetric: float = 0.5
     # Temperature schedules.
     gumbel_temp_start: float = 1.0
@@ -244,8 +252,17 @@ class _BaseTrainer:
         else:
             losses["l_task"] = n_logits.new_zeros(())
 
-        # L_sparse on total aligned dims.
-        l_sparse = self.layout.total_aligned_dims() / self.layout.d
+        # L_sparse on total aligned dims.  "normalized" divides by d (per-dim
+        # gradient lambda/d); "per_dim" leaves it unnormalized (per-dim gradient
+        # lambda), which bites at large d.
+        total_aligned = self.layout.total_aligned_dims()
+        match cfg.sparse_mode:
+            case "normalized":
+                l_sparse = total_aligned / self.layout.d
+            case "per_dim":
+                l_sparse = total_aligned
+            case _:
+                raise TrainingError(f"unknown sparse_mode {cfg.sparse_mode!r}")
         losses["l_sparse"] = l_sparse
 
         total = (
@@ -436,3 +453,177 @@ def refit_rotation(
     result["refit_iia_1"] = result["final"]["iia_1"]
     result["refit_iia_2"] = result["final"]["iia_2"]
     return result
+
+
+# ---------------------------------------------------------------------------
+# Checkpointing
+# ---------------------------------------------------------------------------
+
+
+class CheckpointError(ValueError):
+    """Raised for invalid checkpoint save/load configuration."""
+
+
+def _layout_meta(layout: SubspaceLayout) -> dict:
+    return {
+        "d": layout.d,
+        "k_max": layout.k_max,
+        "max_width": layout.max_width,
+        "min_temp": layout.min_temp,
+        "max_temp": layout.max_temp,
+    }
+
+
+def _causal_meta(causal_model: nn.Module) -> dict:
+    """JSON-serializable hyperparameters needed to rebuild a learned model.
+
+    Only :class:`LearnedCausalModel` (and its subclasses, e.g.
+    ``FeaturizedCausalModel``) carry trainable state worth restoring; fixed
+    models are rebuilt from task callables by the caller and need no state.
+    """
+    if not isinstance(causal_model, LearnedCausalModel):
+        return {"kind": "fixed"}
+    decoder = causal_model.decoder
+    # Decoder is either nn.Linear (decoder_hidden=None) or a 2-layer Sequential.
+    if isinstance(decoder, nn.Linear):
+        decoder_hidden = None
+    else:
+        # Sequential(Linear(k*v, h), ReLU, Linear(h, n_labels)); read h.
+        decoder_hidden = int(decoder[0].out_features)
+    encoder_hidden = int(causal_model.encoders[0][0].out_features)
+    return {
+        "kind": "learned",
+        "input_dim": causal_model.input_dim,
+        "k_max": causal_model.k_max,
+        "v": causal_model.v,
+        "n_labels": causal_model.n_labels,
+        "encoder_hidden": encoder_hidden,
+        "decoder_hidden": decoder_hidden,
+    }
+
+
+def save_checkpoint(
+    path: str | Path,
+    rotation: OrthogonalRotation,
+    layout: SubspaceLayout,
+    causal_model: nn.Module,
+    config: JointConfig,
+    extra: dict | None = None,
+) -> None:
+    """Save rotation + layout + (learned) causal-model state and reconstruction meta.
+
+    Persists ``state_dict``s plus a JSON-serializable ``meta`` block carrying the
+    hyperparameters needed to rebuild each module (site dim ``d``, ``k_max``,
+    ``v``, decoder/encoder widths, ``max_width``/``init_width`` semantics).  A
+    :class:`FixedCausalModel` has no learnable state, so only its ``kind`` is
+    recorded and the caller must supply the callables at load time.
+
+    Parameters
+    ----------
+    path:
+        Destination file (``torch.save`` format).
+    rotation, layout, causal_model:
+        The trained modules.
+    config:
+        Training config (stored via :func:`dataclasses.asdict`).
+    extra:
+        Optional JSON-serializable dict merged into ``meta["extra"]`` (e.g.
+        final metrics, tags).
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "d": rotation.d,
+        "rotation_frozen": rotation.frozen,
+        "layout": _layout_meta(layout),
+        "causal": _causal_meta(causal_model),
+        "config": asdict(config) if is_dataclass(config) else dict(config),
+        "extra": extra or {},
+    }
+    # Validate JSON-serializability early (fail before writing the blob).
+    json.dumps(meta)
+    payload = {
+        "meta": meta,
+        "rotation_state": rotation.state_dict(),
+        "layout_state": layout.state_dict(),
+        "causal_state": (
+            causal_model.state_dict()
+            if isinstance(causal_model, LearnedCausalModel)
+            else None
+        ),
+    }
+    torch.save(payload, path)
+
+
+def load_checkpoint(
+    path: str | Path,
+    *,
+    feature_fn=None,
+    map_location: str | torch.device = "cpu",
+) -> dict:
+    """Load a checkpoint saved by :func:`save_checkpoint`.
+
+    Reconstructs the :class:`OrthogonalRotation` and :class:`SubspaceLayout` from
+    ``meta`` and loads their state.  If the checkpoint held a learned causal
+    model it is rebuilt too: a plain :class:`LearnedCausalModel` when
+    ``feature_fn is None``, otherwise a
+    :class:`jdas.models.hf.FeaturizedCausalModel` wrapping ``feature_fn``.
+
+    Returns
+    -------
+    dict
+        ``{"rotation", "layout", "causal_model", "config", "meta"}``.
+        ``causal_model`` is ``None`` for checkpoints whose model was fixed.
+    """
+    payload = torch.load(path, map_location=map_location, weights_only=False)
+    meta = payload["meta"]
+
+    lm = meta["layout"]
+    layout = SubspaceLayout(
+        lm["d"],
+        lm["k_max"],
+        max_width=lm["max_width"],
+        min_temp=lm["min_temp"],
+        max_temp=lm["max_temp"],
+    )
+    layout.load_state_dict(payload["layout_state"])
+    layout.to(map_location)
+
+    rotation = OrthogonalRotation(meta["d"], freeze=meta["rotation_frozen"])
+    rotation.load_state_dict(payload["rotation_state"])
+    rotation.to(map_location)
+
+    causal_model = None
+    cm = meta["causal"]
+    if cm["kind"] == "learned":
+        if feature_fn is None:
+            causal_model = LearnedCausalModel(
+                cm["input_dim"],
+                cm["k_max"],
+                v=cm["v"],
+                n_labels=cm["n_labels"],
+                encoder_hidden=cm["encoder_hidden"],
+                decoder_hidden=cm["decoder_hidden"],
+            )
+        else:
+            from .models.hf import FeaturizedCausalModel
+
+            causal_model = FeaturizedCausalModel(
+                feature_fn,
+                cm["input_dim"],
+                cm["k_max"],
+                v=cm["v"],
+                n_labels=cm["n_labels"],
+                encoder_hidden=cm["encoder_hidden"],
+                decoder_hidden=cm["decoder_hidden"],
+            )
+        causal_model.load_state_dict(payload["causal_state"])
+        causal_model.to(map_location)
+
+    return {
+        "rotation": rotation,
+        "layout": layout,
+        "causal_model": causal_model,
+        "config": meta["config"],
+        "meta": meta,
+    }

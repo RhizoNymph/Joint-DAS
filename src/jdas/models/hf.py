@@ -1,28 +1,38 @@
 """Frozen HF causal-LM intervention site (Phase B).
 
 :class:`HFSite` wraps a frozen HuggingFace ``*ForCausalLM`` and exposes the
-**residual-stream output of one decoder layer at the last sequence position** as
-an :class:`jdas.types.InterventionSite`.  The task is binary yes/no; the two
-"logits" returned are ``[logit_no, logit_yes]`` where each is a ``logsumexp``
-over a small set of tokenizer-specific token-id variants for the words
-"yes"/"no".
+**residual-stream output of one decoder layer at a per-example sequence
+position** as an :class:`jdas.types.InterventionSite`.  The task is binary
+yes/no; the two "logits" returned are ``[logit_no, logit_yes]`` where each is a
+``logsumexp`` over a small set of tokenizer-specific token-id variants for the
+words "yes"/"no".
 
 Packed inputs
 -------------
-Inputs arrive packed as ``(B, 2, T)`` (see :mod:`jdas.tasks.price_tagging`):
-channel 0 is ``input_ids`` and channel 1 is ``attention_mask``.  Because the
-task uses left padding, position ``-1`` is always the final prompt token.
+Inputs arrive packed as either:
+
+- ``(B, 2, T)`` -- channel 0 = ``input_ids``, channel 1 = ``attention_mask``.
+  The intervention position defaults to the **last** sequence position
+  (``T - 1``).  Because the task uses left padding, that is always the final
+  prompt token.  This is the backward-compatible path.
+- ``(B, 3, T)`` -- channels 0/1 as above, channel 2 = a **per-example position
+  index broadcast across the time axis** (every entry of row ``b`` holds the
+  same integer position ``p_b``, in ``[0, T)``).  Capture and injection then
+  happen at ``p_b`` for each example, which differs per row under left padding.
+
+(see :mod:`jdas.tasks.price_tagging` for how the position channel is built.)
 
 Gradient flow
 -------------
-- ``hidden`` runs under :func:`torch.no_grad` and returns a detached ``(B, d)``.
+- ``hidden`` runs under :func:`torch.no_grad` and returns a detached ``(B, d)``
+  gathered at each example's intervention position.
 - ``logits_with_hidden`` re-runs the model with a forward hook on the target
-  decoder layer that overwrites the last-position slice of the layer's output
-  with the supplied ``hidden`` (which may carry grad).  This pass runs with
-  gradients **enabled** so the autograd graph flows from the injected hidden,
-  through the upper decoder layers and the LM head, to the yes/no logits.  Model
-  parameters are frozen at construction (``requires_grad_(False)``) so no weight
-  gradients accumulate.
+  decoder layer that overwrites the per-example position slice of the layer's
+  output with the supplied ``hidden`` (which may carry grad) via a scatter.  This
+  pass runs with gradients **enabled** so the autograd graph flows from the
+  injected hidden, through the upper decoder layers and the LM head, to the
+  yes/no logits.  Model parameters are frozen at construction
+  (``requires_grad_(False)``) so no weight gradients accumulate.
 """
 
 from __future__ import annotations
@@ -131,15 +141,32 @@ class HFSite(nn.Module):
             raise HFSiteError("could not locate decoder layers at model.model.layers")
         return layers
 
-    def _unpack(self, inputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Unpack packed ``(B, 2, T)`` into ``(input_ids, attention_mask)``."""
-        if inputs.dim() != 3 or inputs.shape[1] != 2:
+    def _unpack(
+        self, inputs: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Unpack packed inputs into ``(input_ids, attention_mask, positions)``.
+
+        Accepts ``(B, 2, T)`` (positions default to the last index ``T - 1``) or
+        ``(B, 3, T)`` (channel 2 holds a per-example position broadcast across
+        time; we read column 0).  ``positions`` is ``(B,)`` long, clamped to
+        ``[0, T)``.
+        """
+        if inputs.dim() != 3 or inputs.shape[1] not in (2, 3):
             raise HFSiteError(
-                f"expected packed (B, 2, T) inputs, got {tuple(inputs.shape)}"
+                f"expected packed (B, 2, T) or (B, 3, T) inputs, got "
+                f"{tuple(inputs.shape)}"
             )
+        t = inputs.shape[-1]
         ids = inputs[:, 0].to(self.device).long()
         mask = inputs[:, 1].to(self.device).long()
-        return ids, mask
+        if inputs.shape[1] == 3:
+            # Channel 2 is a broadcast per-example position; take any column.
+            pos = inputs[:, 2, 0].to(self.device).long().clamp_(0, t - 1)
+        else:
+            pos = torch.full(
+                (ids.shape[0],), t - 1, device=self.device, dtype=torch.long
+            )
+        return ids, mask, pos
 
     @staticmethod
     def _layer_output(out) -> torch.Tensor:
@@ -161,15 +188,20 @@ class HFSite(nn.Module):
     # -- InterventionSite interface ----------------------------------------
 
     def hidden(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Residual-stream output of ``layer`` at the last position ``(B, d)``.
+        """Residual-stream output of ``layer`` at each example's position ``(B, d)``.
 
-        Runs under ``no_grad``; returns a detached tensor.
+        Runs under ``no_grad``; returns a detached tensor.  The position is the
+        last index for ``(B, 2, T)`` inputs or the per-example index for
+        ``(B, 3, T)`` inputs.
         """
-        ids, mask = self._unpack(inputs)
+        ids, mask, pos = self._unpack(inputs)
         captured: dict[str, torch.Tensor] = {}
 
         def hook(_module, _inp, out):
-            captured["h"] = self._layer_output(out)[:, -1, :].detach()
+            h = self._layer_output(out)  # (B, T, d)
+            b = h.shape[0]
+            idx = pos.view(b, 1, 1).expand(b, 1, h.shape[-1])  # (B, 1, d)
+            captured["h"] = h.gather(1, idx).squeeze(1).detach()  # (B, d)
 
         handle = self._layers[self.layer].register_forward_hook(hook)
         try:
@@ -182,19 +214,26 @@ class HFSite(nn.Module):
     def logits_with_hidden(
         self, inputs: torch.Tensor, hidden: torch.Tensor
     ) -> torch.Tensor:
-        """Re-run the model with ``hidden`` injected at (``layer``, last pos).
+        """Re-run the model with ``hidden`` injected at (``layer``, per-example pos).
 
         Gradients are enabled so the graph flows from ``hidden`` up to the yes/no
-        logits (model weights are frozen).
+        logits (model weights are frozen).  The yes/no readout is taken at the
+        last sequence position (the answer token), independent of the
+        intervention position.
         """
-        ids, mask = self._unpack(inputs)
+        ids, mask, pos = self._unpack(inputs)
         hidden = hidden.to(self.device)
 
         def hook(_module, _inp, out):
-            h = self._layer_output(out)
-            # Replace only the last-position slice; keep the rest of the graph.
+            h = self._layer_output(out)  # (B, T, d)
+            b, _, d = h.shape
+            # Scatter the injected hidden into each example's position slot,
+            # keeping the rest of the graph.  Build a boolean position mask and
+            # blend so autograd flows through `hidden`.
             h = h.clone()
-            h[:, -1, :] = hidden
+            time_idx = torch.arange(h.shape[1], device=h.device).view(1, -1)  # (1,T)
+            sel = (time_idx == pos.view(b, 1)).unsqueeze(-1).to(h.dtype)  # (B,T,1)
+            h = h * (1.0 - sel) + hidden.unsqueeze(1) * sel
             if isinstance(out, tuple):
                 return (h, *out[1:])
             return h
@@ -209,7 +248,7 @@ class HFSite(nn.Module):
 
     def logits(self, inputs: torch.Tensor) -> torch.Tensor:
         """Clean forward pass; return ``(B, 2)`` = [logit_no, logit_yes]."""
-        ids, mask = self._unpack(inputs)
+        ids, mask, _pos = self._unpack(inputs)
         with torch.no_grad():
             lm_out = self.model(input_ids=ids, attention_mask=mask)
         return self._yes_no_logits(lm_out.logits[:, -1, :])

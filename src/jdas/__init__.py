@@ -13,16 +13,20 @@ from .eval import RecoveryResult, effective_k, iia, recovery
 from .intervention import InterventionError, interchange
 from .rotation import OrthogonalRotation, RotationError, SubspaceLayout
 from .training import (
+    CheckpointError,
     DASTrainer,
     JointConfig,
     JointTrainer,
     TrainingError,
+    load_checkpoint,
     refit_rotation,
+    save_checkpoint,
 )
 from .types import InterventionBatch, InterventionSite, Task
 
 __all__ = [
     "CausalModelError",
+    "CheckpointError",
     "DASTrainer",
     "FixedCausalModel",
     "InterventionBatch",
@@ -40,6 +44,8 @@ __all__ = [
     "effective_k",
     "interchange",
     "iia",
+    "load_checkpoint",
     "recovery",
     "refit_rotation",
+    "save_checkpoint",
 ]

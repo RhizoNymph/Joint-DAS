@@ -124,9 +124,24 @@ class SubspaceLayout(nn.Module):
 
     Each high-level variable ``i`` (``0 <= i < k_max``) owns the contiguous set
     of aligned coordinates ``[c_{i-1}, c_i)`` where the boundaries are the
-    cumulative sums of non-negative widths ``w_i = softplus(raw_i)`` clamped to
-    ``d``.  Because the blocks are cumulative and non-overlapping by
-    construction, masks of different variables never overlap.
+    cumulative sums of non-negative widths ``w_i`` clamped to ``d``.  Because the
+    blocks are cumulative and non-overlapping by construction, masks of different
+    variables never overlap.
+
+    Width parameterization
+    ----------------------
+    Two modes for ``w_i``:
+
+    - **Unbounded** (``max_width is None``, the default): ``w_i =
+      softplus(raw_i)``, initialized so ``w_i == init_width``.  This is the
+      historical behavior.
+    - **Bounded** (``max_width`` set): ``w_i = max_width * sigmoid(raw_i)``,
+      initialized so ``w_i ~= init_width`` (requires ``init_width <
+      max_width``).  A hard per-variable width cap is then guaranteed:
+      ``w_i < max_width`` for every value of ``raw_i``, so no single variable can
+      absorb an arbitrarily large block regardless of optimization pressure.  The
+      cap addresses the LM-scale collapse where one variable owns the whole
+      residual stream.
 
     Two mask flavours are produced:
 
@@ -144,7 +159,11 @@ class SubspaceLayout(nn.Module):
         Maximum number of variables (blocks).
     init_width:
         Initial expected width (in dims) of each block.  ``raw`` is initialized
-        so that ``softplus(raw) == init_width``.
+        so that ``widths() == init_width`` (approximately, in bounded mode).
+    max_width:
+        If ``None`` (default) widths are unbounded (``softplus``).  If set, each
+        width is capped strictly below ``max_width`` via
+        ``max_width * sigmoid(raw)``; requires ``0 < init_width < max_width``.
     min_temp, max_temp:
         Clamp range for the mask temperature.
     """
@@ -155,6 +174,7 @@ class SubspaceLayout(nn.Module):
         k_max: int,
         *,
         init_width: float = 1.0,
+        max_width: float | None = None,
         min_temp: float = 0.05,
         max_temp: float = 5.0,
     ) -> None:
@@ -167,13 +187,25 @@ class SubspaceLayout(nn.Module):
             )
         if init_width <= 0.0:
             raise RotationError(f"init_width must be positive, got {init_width}")
+        if max_width is not None and not (init_width < max_width):
+            raise RotationError(
+                f"require init_width < max_width, got init_width={init_width}, "
+                f"max_width={max_width}"
+            )
         self.d = d
         self.k_max = k_max
+        self.max_width = None if max_width is None else float(max_width)
         self.min_temp = float(min_temp)
         self.max_temp = float(max_temp)
 
-        # Inverse-softplus of init_width so softplus(raw_widths) == init_width.
-        inv = torch.log(torch.expm1(torch.tensor(float(init_width))))
+        if self.max_width is None:
+            # Inverse-softplus of init_width so softplus(raw_widths) == init_width.
+            inv = torch.log(torch.expm1(torch.tensor(float(init_width))))
+        else:
+            # Inverse-sigmoid (logit) of init_width / max_width so that
+            # max_width * sigmoid(raw_widths) == init_width.
+            frac = float(init_width) / self.max_width
+            inv = torch.logit(torch.tensor(frac))
         self.raw_widths = nn.Parameter(torch.full((k_max,), float(inv)))
         # Mutable temperature (buffer so it moves with .to(device) and is saved).
         self.register_buffer("_temperature", torch.tensor(1.0))
@@ -192,8 +224,14 @@ class SubspaceLayout(nn.Module):
     # -- boundaries -------------------------------------------------------
 
     def widths(self) -> torch.Tensor:
-        """Non-negative block widths ``(k_max,)`` via softplus of raw params."""
-        return torch.nn.functional.softplus(self.raw_widths)
+        """Non-negative block widths ``(k_max,)``.
+
+        Unbounded mode: ``softplus(raw)``.  Bounded mode: ``max_width *
+        sigmoid(raw)`` (strictly ``< max_width``).
+        """
+        if self.max_width is None:
+            return torch.nn.functional.softplus(self.raw_widths)
+        return self.max_width * torch.sigmoid(self.raw_widths)
 
     def boundaries(self) -> torch.Tensor:
         """Cumulative boundaries ``c_0..c_{k_max}`` of shape ``(k_max + 1,)``.

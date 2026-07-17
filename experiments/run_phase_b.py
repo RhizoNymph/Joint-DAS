@@ -33,7 +33,13 @@ from jdas.eval import iia, recovery
 from jdas.models.hf import FeaturizedCausalModel, load_hf_site
 from jdas.rotation import OrthogonalRotation, SubspaceLayout
 from jdas.tasks.price_tagging import PriceTaggingTask
-from jdas.training import DASTrainer, JointConfig, JointTrainer, refit_rotation
+from jdas.training import (
+    DASTrainer,
+    JointConfig,
+    JointTrainer,
+    refit_rotation,
+    save_checkpoint,
+)
 
 
 def _build_config(args: argparse.Namespace) -> JointConfig:
@@ -47,6 +53,7 @@ def _build_config(args: argparse.Namespace) -> JointConfig:
         freeze_rotation=(args.method == "random_rotation"),
         eval_every=max(1, args.steps // 10),
         lambda_sparse=args.lambda_sparse,
+        sparse_mode=args.sparse_mode,
     )
 
 
@@ -89,6 +96,34 @@ def _wrong_fixed_model(task: PriceTaggingTask, v: int, k: int) -> FixedCausalMod
     )
 
 
+def _maybe_save_ckpt(
+    args: argparse.Namespace,
+    rotation,
+    layout,
+    causal_model,
+    config: JointConfig,
+    train_out: dict,
+) -> None:
+    """Save a checkpoint (rotation+layout+causal state + meta) if ``--save-ckpt``."""
+    if not args.save_ckpt:
+        return
+    save_checkpoint(
+        args.save_ckpt,
+        rotation,
+        layout,
+        causal_model,
+        config,
+        extra={
+            "method": args.method,
+            "layer": args.layer,
+            "model": args.model,
+            "init_width": args.init_width,
+            "final": train_out.get("final", {}),
+        },
+    )
+    print(f"saved checkpoint to {args.save_ckpt}")
+
+
 def _add_recovery(result: dict, causal_model, task, config: JointConfig) -> None:
     if task.k_gt > 0:
         gen = torch.Generator(device=config.device).manual_seed(config.seed + 1)
@@ -129,6 +164,36 @@ def main() -> None:
         help="weight of the aligned-dims sparsity penalty (0.1 is too weak at LM scale)",
     )
     parser.add_argument(
+        "--sparse-mode",
+        choices=["normalized", "per_dim"],
+        default="normalized",
+        help="normalized: lambda*total/d (weak at large d); per_dim: lambda*total",
+    )
+    parser.add_argument(
+        "--max-width",
+        type=float,
+        default=None,
+        help="hard per-variable width cap (dims); None = unbounded softplus widths",
+    )
+    parser.add_argument(
+        "--init-width",
+        type=float,
+        default=None,
+        help="initial per-variable width (dims); default d/(2*k_max)",
+    )
+    parser.add_argument(
+        "--position",
+        choices=["last", "z_digits"],
+        default="last",
+        help="intervention position: last token, or last token of the Z amount",
+    )
+    parser.add_argument(
+        "--save-ckpt",
+        type=str,
+        default=None,
+        help="path to save a checkpoint (rotation+layout+causal) after training",
+    )
+    parser.add_argument(
         "--no-refit",
         action="store_true",
         help="skip the freeze-and-refit pass after joint training (halves runtime)",
@@ -146,6 +211,7 @@ def main() -> None:
         template_id=args.template_id,
         device=args.device,
         use_chat_template=args.chat_template,
+        position=args.position,
     )
     config = _build_config(args)
 
@@ -166,7 +232,13 @@ def main() -> None:
         case _:
             raise SystemExit(f"unknown method {args.method!r}")
     rotation = OrthogonalRotation(d, freeze=config.freeze_rotation)
-    layout = SubspaceLayout(d, k_max, init_width=max(1.0, d / (2 * k_max)))
+    init_width = args.init_width if args.init_width is not None else max(1.0, d / (2 * k_max))
+    if args.max_width is not None:
+        # init must sit strictly below the cap.
+        init_width = min(init_width, 0.5 * args.max_width)
+    layout = SubspaceLayout(
+        d, k_max, init_width=init_width, max_width=args.max_width
+    )
 
     result: dict[str, object] = {
         "config": {**vars(args)},
@@ -184,6 +256,7 @@ def main() -> None:
             )
             trainer = JointTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
+            _maybe_save_ckpt(args, rotation, layout, causal_model, config, train_out)
             _add_recovery(result, causal_model, task, config)
             if args.method == "joint" and not args.no_refit:
                 refit = refit_rotation(site, task, causal_model, config)
@@ -193,10 +266,12 @@ def main() -> None:
             causal_model = _true_fixed_model(task, args.v)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
+            _maybe_save_ckpt(args, rotation, layout, causal_model, config, train_out)
         case "das_wrong":
             causal_model = _wrong_fixed_model(task, args.v, k_max)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
+            _maybe_save_ckpt(args, rotation, layout, causal_model, config, train_out)
         case _:
             raise SystemExit(f"unknown method {args.method!r}")
 
