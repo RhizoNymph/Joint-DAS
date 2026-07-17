@@ -40,6 +40,36 @@ detail in `experiments/results/phase_a_analysis.md` and the Phase B JSONs under
   causal representations were **not** demonstrated on the LM; the actionable fix
   (hard width caps / per-dim penalty / width annealing) is identified but unrun.
 
+**Night 2 (2026-07-17):**
+
+- **[N2] Collapse mechanism identified and fixed.** Night 1's collapse was
+  gradient *death*, not gradient *starvation*: the λ=50 and λ=200 runs are
+  byte-identical in every trajectory field (only `loss_total` differs, by exactly
+  `(200−50)·1.0 = 150`), because the normalized penalty `λ·clamp(cumsum(widths),
+  max=d)/d` saturates at the clamp — its gradient is exactly 0 at **any** λ once
+  `aligned_dims = d`. Switching to a **per-dim penalty with a hard width cap**
+  (`max_width 128`, `init_width 32`, λ_sparse 0.02) removes the saturation and the
+  method no longer collapses.
+- **[N2] The fix works at LM scale.** Capped joint (Qwen2.5-1.5B, layer 17, 1200
+  steps) reaches iia_1 0.855 / iia_2 0.863 with **k_eff = 4** live variables in
+  ~59/1536 dims (3.9% of the space), beating the capped random-rotation control
+  (0.781/0.730, **k_eff = 0**, now vacuous) by **+0.074 / +0.133**. Unlike Night 1,
+  the learned rotation does demonstrable causal work on the LM. Recovery ~0.72 =
+  partial; no clean (L,U) recovery.
+- **[N2] Basis non-identifiability is fundamental, from two independent methods.**
+  Seed study (10 seeds, hier-eq layer 1): 10/10 learn causally valid variable sets
+  with near-perfect boolean semantics (iia 0.87–1.00, mean 0.963), but **0/10
+  recover the literal {E1,E2}** — 4 find a minimal 2-var alternative basis ((OR,NAND),
+  (NOR,AND), (NAND,OR), (OR,AND)), 6 find overcomplete 3–4-var sets. Brute-force
+  search independently confirms it: **E1+E2 ranks LAST** of 15 pairs (iia_1 0.559)
+  while composite bases (AND+OR, OR+NAND) hit perfect IIA 1.000. Convergent evidence
+  that the literal atoms are not a valid DAS alignment at that site; the composites are.
+- **[N2] Wrong composition laws are now falsified.** A real k=2 wrong hypothesis
+  (`das_wrong_and`: AND in place of the true XNOR/OR) sits **at or below its analytic
+  agreement ceiling** in all four groups (hier 0.568/0.622, bool 0.814/0.720 vs
+  ceilings 0.747/0.876) and far below correct models — the composed-swap falsification
+  Night 1 could not demonstrate with its k=1 baseline.
+
 ## 2. What was built
 
 Joint-DAS extends Distributed Alignment Search so the high-level causal model H is
@@ -250,37 +280,175 @@ output-copy solution. (iii) At LM scale, sparsity strength is *the* key hyperpar
 weak at d = 1536, where it permits the whole-space patching degeneracy. Scaling the
 method is largely a question of scaling (or annealing) that penalty with d.
 
+## Night 2 — collapse mechanism, the fix at LM scale, basis non-identifiability, and falsification
+
+Night 2 closes two of Night 1's open gaps (the LM collapse and the `das_wrong`
+falsification) and sharpens the basis-variance finding into a claim supported by two
+independent procedures. Result files: `experiments/results/night2/` and the two
+diagnostic runs `experiments/results/phase_b/pt_joint_l17_s0_sparse{50,200}.json`.
+Every number below was re-read from the JSONs; a compact table set is in
+`experiments/results/night2_summary.md`.
+
+### N2.1 — The collapse is gradient death at the width clamp, not weak λ
+
+Night 1 concluded that `lambda_sparse` was "too weak" at d=1536. Night 2 shows the
+real mechanism is sharper: the normalized penalty is `λ·clamp(cumsum(widths),
+max=d)/d`, and once the layout saturates (`aligned_dims = d = 1536`) the clamp makes
+its gradient **exactly zero at any λ**. The two diagnostic runs
+`pt_joint_l17_s0_sparse50.json` (λ=50) and `pt_joint_l17_s0_sparse200.json` (λ=200)
+are **byte-identical in every training-trajectory field** — recovery matrix, best
+assignment, recovery score, and every per-step `iia_1/iia_2/effective_k/aligned_dims/
+hard_widths`. The *only* difference is `loss_total`, larger by exactly
+`(200−50)·loss_sparse = 150·1.0 = 150.0` at every logged step. `aligned_dims` is
+pinned at 1536 and `loss_sparse` at 1.0 from step 0 onward, with
+`hard_widths = [1536,0,0,0]` throughout. A 4× λ increase moving nothing is only
+possible if the sparse gradient is identically zero — gradient death, not starvation.
+Both runs end at iia_1 0.809, iia_2 0.832, k_eff 1, recovery 0.724.
+
+### N2.2 — The fix works at LM scale: capped joint beats the capped control
+
+The structural fix is a **per-dim penalty with a hard per-variable width cap**
+(`sparse_mode per_dim`, `max_width 128`, `init_width 32`, `lambda_sparse 0.02`),
+which removes the clamp saturation. At layer 17, 1200 steps (no refit):
+
+| method | position | iia_1 | iia_2 | k_eff | hard_widths | aligned_dims (/1536) | recovery |
+|---|---|---|---|---|---|---|---|
+| joint (capped) | last | **0.855** | **0.863** | 4 | [15,15,15,14] | 59.3 (3.9%) | 0.719 |
+| random control (capped) | last | 0.781 | 0.730 | **0** | [14,14,13,14] | 55.3 (3.6%) | 0.724 |
+| joint z-digits (capped) | z_digits | 0.789 | 0.730 | 3 | [14,13,14,14] | 54.9 (3.6%) | 0.731 |
+
+The capped **joint** run keeps 4 live variables in ~4% of the residual stream and
+reaches iia_1 0.855 / iia_2 0.863. Crucially the capped **random-rotation control**
+collapses to **k_eff = 0** (0.781 iia_1, 0.730 iia_2): with the whole-space
+patching escape hatch removed, a frozen random rotation can no longer be vacuously
+satisfied. Joint beats control by **+0.074 (iia_1) / +0.133 (iia_2)** with 4 live
+variables vs 0 — the first LM-scale evidence that the *learned rotation* carries
+causal content. Recovery ~0.72 is partial: the surviving variables track neither L
+nor U cleanly, so there is no clean (L,U) recovery, but the representation is no
+longer vacuous. The **z-digits** position (intervening on the price-digit tokens
+rather than the last token) underperforms at this depth (0.789/0.730, k_eff 3),
+suggesting the causal information at layer 17 is not localized there.
+
+![capped-LM comparison](docs/assets/night2_capped_lm.png)
+
+### N2.3 — Basis non-identifiability, confirmed by two independent methods
+
+**Seed study** (`seed_study_hier_l1.json`, 10 seeds, hier-eq layer 1, 4000 steps):
+iia_1 0.963±0.035, iia_2 0.950±0.055. The headline is that **10/10 seeds learn
+causally valid variable sets with near-perfect boolean semantics** (per-variable
+`fn_agreement` 0.97–1.00 for the live variables) but **0/10 recover exactly
+{E1,E2}**. Four seeds converge to a *minimal 2-var alternative basis* — seed 1
+(OR,NAND), seed 7 (NOR,AND), seed 8 (NAND,OR), seed 9 (OR,AND) — and six find
+*overcomplete* 3–4-variable sets (e.g. seed 2: A,B,AND,OR; seed 4: A,notA,notA,B).
+The classifier labels all 10 `other`, but that reflects its thresholds being
+stricter than the data (per-variable agreements of 0.98 failing the ≥0.9
+joint-purity *chain*), not a failure to find structure — the `live_fns` tables are
+the real result. As at Night 1, sparsity is too weak at toy scale to prune the
+redundant variables (hard widths stay ~30/256).
+
+![seed-study basis composition](docs/assets/night2_seed_basis.png)
+
+**Search baseline** (`search_hier_l1.json`, brute-force over the 15 candidate pairs,
+fitting Q per candidate) independently confirms it. The hier-eq layer-1 ranking:
+
+| rank | pair | iia_1 | iia_2 |
+|---|---|---|---|
+| 1 | E1 + XNOR(=y) | 1.000 | 1.000 |
+| 2 | E2 + XNOR(=y) | 1.000 | 1.000 |
+| 3 | AND + OR | 1.000 | 1.000 |
+| 4 | OR + NAND | 1.000 | 1.000 |
+| … | … | … | … |
+| **15 (last)** | **E1 + E2** | **0.559** | 0.600 |
+
+The literal atom pair **E1+E2 ranks dead last** (iia_1 0.559) even though its
+`clean_task_acc = 1.0` (it reconstructs the label). The composite bases the joint
+method converges to are exactly the perfect-IIA pairs. Two totally different
+procedures — gradient joint learning and brute-force enumeration — agree that at this
+site the literal atoms are not a valid DAS alignment and the composites are. Note two
+of the perfect-IIA pairs (E1+XNOR, E2+XNOR) contain the output variable y=XNOR
+itself: an **(output + one-atom) pair is also a valid basis** — together they
+determine both atoms up to the E1↔E2 symmetry. On boolean_comp the best pair is
+`x3 + OR(=y)` (0.945/0.938), likewise a coarser, y-containing solution, consistent
+with the joint method's convergence to composite bases.
+
+![hier search ranking](docs/assets/night2_search_hier.png)
+
+### N2.4 — Wrong composition laws are falsified under composed interventions
+
+Night 1's `das_wrong` was a k=1 output-copy hypothesis that could not be falsified
+(no |I|=2 swap exists at k=1). Night 2 replaces it with `das_wrong_and`, a genuine
+**k=2** hypothesis using the *wrong composition law* (AND where the true law is XNOR
+for hier / OR for bool). Each run also reports an analytic `agreement_ceiling` — the
+best IIA that wrong law can achieve by construction. Means over 3 seeds (sample std):
+
+| group | iia_1 | iia_2 | ceiling (|I|=1 / |I|=2) |
+|---|---|---|---|
+| hier L0 | 0.568±0.059 | 0.576±0.010 | 0.747 / 0.750 |
+| hier L1 | 0.622±0.031 | 0.673±0.023 | 0.747 / 0.750 |
+| bool L0 | 0.814±0.014 | 0.827±0.014 | 0.876 / 0.875 |
+| bool L1 | 0.720±0.029 | 0.729±0.008 | 0.876 / 0.875 |
+
+Every wrong-AND run lands **at or below its analytic ceiling** and far below the
+correct models (Phase A `das_true` L0 0.94–1.0; capped joint LM ~0.855). The
+framework demonstrably falsifies a wrong-but-plausible causal law under composed
+|I|=2 interventions — the falsification Night 1 could not show, now closed.
+
+![wrong-AND vs ceiling](docs/assets/night2_wrong_and.png)
+
+### N2.5 — Wave-B status
+
+Three follow-up runs (`pt_das_true_l17_capped.json` — can the hand-specified (L,U)
+work when collapse is prevented; `pt_joint_l17_capped_s1.json` — replicate stability;
+`pt_joint_l10_zdigits_capped.json` — mid-layer position probe) were **still running**
+when this analysis was written and are not folded in. The capped-LM plot and summary
+table auto-include the `das_true (capped)` bar once that file lands.
+
 ## 6. Limitations & next steps
 
-Limitations:
-- **Seed variance in recovery.** IIA is stable across seeds; the recovered *basis* is
-  not (2/3 literal atoms, 1/3 alternative). Joint training does not reliably converge
-  to the literal GT variables every seed.
-- **Weak sparsity at LM scale.** `lambda_sparse = 0.1` never bites at d = 1536;
-  aligned_dims/d stays at 1.0. This is what let `random_rotation` (and, plausibly,
-  joint) collapse to whole-space patching.
-- **k=1 iia_2 evaluation gap.** `das_wrong` cannot be falsified on composed swaps
-  because no |I|=2 intervention exists for k=1. The output-copy hypothesis is not
-  actually refuted by the current baseline.
-- **Wide masks even in toy.** Even where joint succeeds, hard widths stay ~31/256 per
-  variable; solutions are behaviourally correct but not dimension-minimal.
-- **Single LM / task / site.** One model (1.5B), one task (price tagging), one layer
-  (17), one seed. `das_true` depth-collapse shown only for hierarchical equality.
-- **N's 81% task ceiling** caps Phase B IIA against a GT-shaped H.
-- **No discrete-search baseline** (optional (e) in `docs/DESIGN.md`) was run.
+**Closed by Night 2:**
+- **LM collapse — closed.** The whole-space collapse is now understood (gradient
+  death at the width clamp, N2.1) and fixed (per-dim penalty + hard width cap): the
+  capped joint run at layer 17 keeps 4 live variables in ~4% of the space and beats
+  the capped control (N2.2). Sparsity at LM scale is no longer the blocker.
+- **Falsification gap — closed.** The k=2 `das_wrong_and` sits at or below its
+  analytic ceiling in all four groups (N2.4), demonstrating the composed-swap
+  falsification the k=1 Night-1 baseline could not.
+
+**New / sharpened by Night 2:**
+- **Basis non-identifiability is fundamental, not a training artifact.** Across 10
+  seeds *and* under brute-force search, the literal `{E1,E2}` atoms are never the
+  solution — `E1+E2` ranks LAST in search (iia_1 0.559) while composite bases hit
+  perfect IIA (N2.3). Multiple valid factorisations exist at a given site and the
+  method (any method) selects among them; "recover the human's variables" is not a
+  well-posed target where the atoms are not linearly disjoint. This reframes the
+  research question from *which* variables to *whether some valid factorisation* is
+  representable, but it also means recovery-to-GT is inherently seed/site-dependent.
+
+**Still open:**
+- **No clean (L,U) recovery on the LM.** The capped joint run is non-vacuous
+  (k_eff 4, beats control) but recovery is ~0.72 — the live variables track neither
+  L nor U cleanly. Whether a genuinely L/U-aligned solution exists at layer 17 is
+  unresolved; the wave-B `das_true (capped)` run (N2.5) is the direct test.
+- **Redundant-variable pruning still weak.** Even the successful capped LM run and
+  the toy seed runs leave overcomplete or ~equal-width variables; sparsity does not
+  drive solutions to dimension-minimal form.
+- **Single LM / task / site remains.** One model (1.5B), one task (price tagging),
+  essentially one layer (17; z-digits and l10 probes are partial). `das_true`
+  depth-collapse shown only for hierarchical equality.
+- **N's 81% task ceiling** still caps Phase B IIA against a GT-shaped H.
 - **Toy N is only 3 layers**; depth sweep is coarse.
 
 Next steps:
-- **Stronger / annealed sparsity for LM.** Scale `lambda_sparse` with d (or anneal it
-  up over training) so a factored solution is cheaper than whole-space patching; re-run
-  the layer-17 grid and, critically, get the `joint` run to completion.
-- **A principled falsification test.** Replace the k=1 `das_wrong` with a k≥2
-  wrong-but-live hypothesis (one output-copy variable + a second live variable) so the
-  composed-swap failure can actually be measured.
-- **Position / layer sweeps** on the LM, and additional tasks, to test whether the
-  depth-collapse and learned-basis phenomena generalise.
-- **Bigger models via the user's vLLM capture infra** for inference-side validation of
-  discovered alignments, and a comparison against **Boundless DAS**.
+- **Finish wave B** (`pt_das_true_l17_capped`, `_capped_s1`, `l10_zdigits_capped`):
+  test whether the hand-specified (L,U) is representable once collapse is prevented,
+  confirm seed stability of the capped solution, and probe a mid-layer position.
+- **Push for cleaner recovery** on the LM: stronger per-dim sparsity to minimise
+  widths, and a layer sweep to find where L/U (if anywhere) become linearly disjoint.
+- **Report the basis-selection structure** as a first-class result rather than a
+  limitation — enumerate the valid bases per site and characterise which the joint
+  method prefers.
+- **Additional tasks and models** (via the user's vLLM capture infra), and a
+  comparison against **Boundless DAS**.
 
 ## 7. Reproduction
 
