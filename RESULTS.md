@@ -425,6 +425,23 @@ Three conclusions:
    analogue of the toy overcompleteness finding (N2.3). The mid-layer z-digits
    probe (l10) is non-vacuous but weaker (0.770/0.785).
 
+### N2.6 — Wave C: minimality probes (800 steps, capped recipe)
+
+| run | iia_1 | iia_2 | k_eff | aligned | recovery |
+|---|---|---|---|---|---|
+| joint l17 k_max=2 (s0) | 0.852 | 0.785 | 2 | 37 | 0.743 |
+| joint l17 k_max=2 (s1) | 0.867 | 0.879 | 2 | 37 | 0.653 |
+| joint l17 k_max=4, λ=0.1 (5×) | 0.859 | 0.852 | 4 | 72 | 0.718 |
+
+Restricting to k_max = 2 yields minimal two-variable learned solutions of
+comparable IIA in fewer dims — but recovery stays 0.65–0.74: the two learned
+variables are *a* valid factorisation at the site, not specifically (L, U),
+even though das_true (N2.5) proves (L, U) itself fits there at 0.89/0.92. This
+is basis non-identifiability (N2.3) at LM scale, now visible even at the
+minimal variable count. Raising the per-dim λ 5× shrinks nothing further and
+does not kill redundant variables — variable-count pruning needs an explicit
+mechanism (e.g. per-variable gates), not just width pressure.
+
 ## 6. Limitations & next steps
 
 **Closed by Night 2:**
