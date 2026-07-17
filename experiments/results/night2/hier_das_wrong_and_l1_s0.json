@@ -1,0 +1,261 @@
+{
+  "config": {
+    "task": "hierarchical_equality",
+    "method": "das_wrong_and",
+    "site_layer": 1,
+    "seed": 0,
+    "device": "cuda",
+    "steps": 4000,
+    "batch_size": 64,
+    "n_sources": 2,
+    "lr": 0.001,
+    "k_max": 4,
+    "v": 2,
+    "out": "experiments/results/night2/hier_das_wrong_and_l1_s0.json"
+  },
+  "config_dataclass": {
+    "steps": 4000,
+    "batch_size": 64,
+    "n_sources": 2,
+    "lr": 0.001,
+    "lr_rotation": null,
+    "lr_causal": null,
+    "lambda_task": 1.0,
+    "lambda_sparse": 0.1,
+    "sparse_mode": "normalized",
+    "lambda_cf_symmetric": 0.5,
+    "gumbel_temp_start": 1.0,
+    "gumbel_temp_end": 0.1,
+    "mask_temp_start": 1.0,
+    "mask_temp_end": 0.1,
+    "anneal": "linear",
+    "swap_sizes": [
+      1,
+      2
+    ],
+    "swap_weights": [
+      0.5,
+      0.5
+    ],
+    "eval_every": 400,
+    "eval_batches": 4,
+    "eval_batch_size": 64,
+    "seed": 0,
+    "device": "cuda",
+    "freeze_rotation": false
+  },
+  "agreement_ceiling": {
+    "1": 0.7458,
+    "2": 0.7496
+  },
+  "history": [
+    {
+      "step": 0,
+      "loss_total": 3.7618961334228516,
+      "loss_cf": 3.7118961811065674,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.5,
+      "tau_gumbel": 1.0,
+      "tau_mask": 1.0,
+      "iia_1": 0.515625,
+      "iia_2": 0.54296875,
+      "effective_k": 2,
+      "aligned_dims": 127.99871826171875,
+      "hard_widths": [
+        64,
+        64
+      ]
+    },
+    {
+      "step": 400,
+      "loss_total": 4.0036187171936035,
+      "loss_cf": 3.95379638671875,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.49822473526000977,
+      "tau_gumbel": 0.9099774943735934,
+      "tau_mask": 0.9099774956703186,
+      "iia_1": 0.65625,
+      "iia_2": 0.671875,
+      "effective_k": 2,
+      "aligned_dims": 127.54386138916016,
+      "hard_widths": [
+        64,
+        64
+      ]
+    },
+    {
+      "step": 800,
+      "loss_total": 2.556335926055908,
+      "loss_cf": 2.5067081451416016,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.49627694487571716,
+      "tau_gumbel": 0.8199549887471868,
+      "tau_mask": 0.8199549913406372,
+      "iia_1": 0.5859375,
+      "iia_2": 0.59765625,
+      "effective_k": 2,
+      "aligned_dims": 127.04554748535156,
+      "hard_widths": [
+        64,
+        63
+      ]
+    },
+    {
+      "step": 1200,
+      "loss_total": 2.609402656555176,
+      "loss_cf": 2.5599749088287354,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.4942781329154968,
+      "tau_gumbel": 0.7299324831207802,
+      "tau_mask": 0.7299324870109558,
+      "iia_1": 0.640625,
+      "iia_2": 0.61328125,
+      "effective_k": 2,
+      "aligned_dims": 126.53385925292969,
+      "hard_widths": [
+        63,
+        64
+      ]
+    },
+    {
+      "step": 1600,
+      "loss_total": 2.6381497383117676,
+      "loss_cf": 2.5889201164245605,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.4922952651977539,
+      "tau_gumbel": 0.6399099774943735,
+      "tau_mask": 0.6399099826812744,
+      "iia_1": 0.671875,
+      "iia_2": 0.6640625,
+      "effective_k": 2,
+      "aligned_dims": 126.02610778808594,
+      "hard_widths": [
+        63,
+        63
+      ]
+    },
+    {
+      "step": 2000,
+      "loss_total": 2.8167710304260254,
+      "loss_cf": 2.7677385807037354,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.49032342433929443,
+      "tau_gumbel": 0.5498874718679669,
+      "tau_mask": 0.549887478351593,
+      "iia_1": 0.6484375,
+      "iia_2": 0.66015625,
+      "effective_k": 2,
+      "aligned_dims": 125.5216064453125,
+      "hard_widths": [
+        63,
+        63
+      ]
+    },
+    {
+      "step": 2400,
+      "loss_total": 3.287761688232422,
+      "loss_cf": 3.2389233112335205,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.4883839190006256,
+      "tau_gumbel": 0.45986496624156037,
+      "tau_mask": 0.4598649740219116,
+      "iia_1": 0.69921875,
+      "iia_2": 0.62109375,
+      "effective_k": 2,
+      "aligned_dims": 125.02522277832031,
+      "hard_widths": [
+        63,
+        62
+      ]
+    },
+    {
+      "step": 2800,
+      "loss_total": 2.7373764514923096,
+      "loss_cf": 2.6887269020080566,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.4864962100982666,
+      "tau_gumbel": 0.3698424606151538,
+      "tau_mask": 0.3698424696922302,
+      "iia_1": 0.6328125,
+      "iia_2": 0.6875,
+      "effective_k": 2,
+      "aligned_dims": 124.54185485839844,
+      "hard_widths": [
+        62,
+        63
+      ]
+    },
+    {
+      "step": 3200,
+      "loss_total": 4.000738620758057,
+      "loss_cf": 3.9522597789764404,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.4847864508628845,
+      "tau_gumbel": 0.2798199549887471,
+      "tau_mask": 0.27981996536254883,
+      "iia_1": 0.6171875,
+      "iia_2": 0.69921875,
+      "effective_k": 2,
+      "aligned_dims": 124.104248046875,
+      "hard_widths": [
+        62,
+        62
+      ]
+    },
+    {
+      "step": 3600,
+      "loss_total": 4.124336242675781,
+      "loss_cf": 4.076031684875488,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.48304474353790283,
+      "tau_gumbel": 0.18979744936234055,
+      "tau_mask": 0.18979744613170624,
+      "iia_1": 0.62109375,
+      "iia_2": 0.62890625,
+      "effective_k": 2,
+      "aligned_dims": 123.65879821777344,
+      "hard_widths": [
+        62,
+        62
+      ]
+    },
+    {
+      "step": 3999,
+      "loss_total": 2.828352928161621,
+      "loss_cf": 2.780229091644287,
+      "loss_cf_sym": 0.0,
+      "loss_task": 0.0,
+      "loss_sparse": 0.4812374711036682,
+      "tau_gumbel": 0.09999999999999998,
+      "tau_mask": 0.10000000149011612,
+      "iia_1": 0.671875,
+      "iia_2": 0.7109375,
+      "effective_k": 2,
+      "aligned_dims": 123.19583892822266,
+      "hard_widths": [
+        62,
+        61
+      ]
+    }
+  ],
+  "final": {
+    "iia_1": 0.625,
+    "iia_2": 0.66015625,
+    "effective_k": 2,
+    "aligned_dims": 123.19583892822266,
+    "hard_widths": [
+      62,
+      61
+    ]
+  }
+}
