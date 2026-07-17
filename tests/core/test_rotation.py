@@ -121,3 +121,61 @@ def test_layout_gradient_flows_to_widths() -> None:
     soft.sum().backward()
     assert layout.raw_widths.grad is not None
     assert layout.raw_widths.grad.abs().sum() > 0
+
+
+# -- width caps (max_width) ----------------------------------------------------
+
+
+def test_default_softplus_widths_unchanged_golden() -> None:
+    """Default (max_width=None) path matches the historical softplus behavior.
+
+    Golden values captured from the pre-change implementation: init_width=2.0
+    gives every soft width == 2.0, total == 6.0, hard_widths == [2, 2, 2].
+    """
+    layout = SubspaceLayout(16, 3, init_width=2.0)
+    assert layout.max_width is None
+    torch.testing.assert_close(
+        layout.widths(), torch.tensor([2.0, 2.0, 2.0]), atol=1e-5, rtol=0
+    )
+    assert float(layout.total_aligned_dims()) == pytest.approx(6.0, abs=1e-5)
+    assert layout.hard_widths().tolist() == [2, 2, 2]
+
+
+def test_bounded_init_matches_init_width() -> None:
+    """Bounded mode initializes each width ~= init_width."""
+    layout = SubspaceLayout(64, 4, init_width=8.0, max_width=32.0)
+    torch.testing.assert_close(
+        layout.widths(),
+        torch.full((4,), 8.0),
+        atol=1e-4,
+        rtol=0,
+    )
+
+
+def test_bounded_width_cap_respected_under_pressure() -> None:
+    """Even after aggressive optimization rewarding width, w_i < max_width."""
+    torch.manual_seed(0)
+    d, k, cap = 256, 3, 32.0
+    layout = SubspaceLayout(d, k, init_width=8.0, max_width=cap)
+    opt = torch.optim.SGD(layout.parameters(), lr=10.0)
+    # Loss that rewards larger widths -> pushes raw_widths up hard.
+    for _ in range(200):
+        opt.zero_grad()
+        loss = -layout.widths().sum()
+        loss.backward()
+        opt.step()
+    w = layout.widths()
+    # Bounded parameterization guarantees w <= max_width for all raw values;
+    # in float32 sigmoid saturates to exactly 1.0 under extreme pressure, so the
+    # invariant is "never exceeds the cap" (the hard cap is respected).
+    assert (w <= cap).all(), w
+    # And the hard integer widths never exceed the cap either.
+    assert int(layout.hard_widths().max()) <= int(cap)
+
+
+def test_bounded_requires_init_below_cap() -> None:
+    """init_width must be strictly below max_width."""
+    with pytest.raises(Exception):
+        SubspaceLayout(16, 2, init_width=32.0, max_width=32.0)
+    with pytest.raises(Exception):
+        SubspaceLayout(16, 2, init_width=40.0, max_width=32.0)

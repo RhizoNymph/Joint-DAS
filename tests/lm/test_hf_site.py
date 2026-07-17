@@ -102,3 +102,94 @@ def _pad_to(packed: torch.Tensor, t: int) -> torch.Tensor:
     out = torch.zeros(b, 2, t, dtype=packed.dtype)
     out[:, :, t - t0:] = packed
     return out
+
+
+def _add_position_channel(packed: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
+    """Append a broadcast per-example position channel -> (B, 3, T)."""
+    b, _, t = packed.shape
+    pos_channel = positions.view(b, 1).expand(b, t)
+    return torch.cat([packed, pos_channel.unsqueeze(1).to(packed.dtype)], dim=1)
+
+
+# -- per-example intervention position (B, 3, T) --------------------------------
+
+
+def test_position_channel_last_matches_two_channel(tokenizer, tiny_model) -> None:
+    """With positions == last index, (B,3,T) path equals the old (B,2,T) path."""
+    site, task = _make(tokenizer, tiny_model)
+    inputs = _inputs(task, 5, seed=20)  # (B, 2, T)
+    t = inputs.shape[-1]
+    positions = torch.full((inputs.shape[0],), t - 1, dtype=torch.long)
+    three = _add_position_channel(inputs, positions)
+
+    torch.testing.assert_close(site.hidden(three), site.hidden(inputs), atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(site.logits(three), site.logits(inputs), atol=1e-5, rtol=1e-5)
+    h = site.hidden(inputs)
+    torch.testing.assert_close(
+        site.logits_with_hidden(three, h),
+        site.logits_with_hidden(inputs, h),
+        atol=1e-5,
+        rtol=1e-5,
+    )
+
+
+def test_reinject_own_hidden_at_arbitrary_positions(tokenizer, tiny_model) -> None:
+    """logits_with_hidden(inputs, hidden(inputs)) ~= logits(inputs) at mixed
+    per-example positions with a left-padded batch."""
+    site, task = _make(tokenizer, tiny_model)
+    # Mixed-length prompts -> left padding puts real tokens at different offsets.
+    short = task.render_prompt(1.00, 2.00, 1.50)
+    long = task.render_prompt(1.00, 2.00, 1.50) + " extra text to make it longer here"
+    packed = task._tokenize([short, long], torch.device("cpu"))  # (2, 2, T)
+    t = packed.shape[-1]
+    # Pick a valid (non-pad) position per example: somewhere inside the prompt.
+    mask = packed[:, 1]  # (2, T)
+    # first non-pad column per row:
+    first = torch.stack([m.nonzero()[0, 0] for m in mask])
+    positions = ((first + t - 1) // 2).long()  # mid-ish, guaranteed valid
+    three = _add_position_channel(packed, positions)
+
+    clean = site.logits(three)
+    reinj = site.logits_with_hidden(three, site.hidden(three))
+    torch.testing.assert_close(reinj, clean, atol=1e-4, rtol=1e-4)
+
+
+def test_injection_position_matters(tokenizer, tiny_model) -> None:
+    """Injecting a vector at position p changes logits, and the right position's
+    result differs from the wrong position's result."""
+    site, task = _make(tokenizer, tiny_model)
+    inputs = _inputs(task, 4, seed=21)
+    t = inputs.shape[-1]
+    b = inputs.shape[0]
+
+    p_right = torch.full((b,), t - 1, dtype=torch.long)
+    p_wrong = torch.full((b,), t - 3, dtype=torch.long)
+    three_right = _add_position_channel(inputs, p_right)
+    three_wrong = _add_position_channel(inputs, p_wrong)
+
+    base = site.logits(inputs)
+    inject = torch.randn(b, site.d)
+    out_right = site.logits_with_hidden(three_right, inject)
+    out_wrong = site.logits_with_hidden(three_wrong, inject)
+    # Injecting a different vector changes the logits.
+    assert not torch.allclose(out_right, base, atol=1e-3)
+    # Injecting at the wrong position is not the same as the right position.
+    assert not torch.allclose(out_right, out_wrong, atol=1e-3)
+
+
+def test_gradients_flow_at_per_example_position(tokenizer, tiny_model) -> None:
+    """Gradients reach a hidden injected at a per-example position."""
+    site, task = _make(tokenizer, tiny_model)
+    inputs = _inputs(task, 4, seed=22)
+    t = inputs.shape[-1]
+    b = inputs.shape[0]
+    positions = torch.tensor([t - 1, t - 2, t - 1, t - 3])[:b]
+    three = _add_position_channel(inputs, positions)
+    h = site.hidden(three).clone().requires_grad_(True)
+    logits = site.logits_with_hidden(three, h)
+    logits[:, 1].sum().backward()
+    assert h.grad is not None
+    assert torch.isfinite(h.grad).all()
+    assert float(h.grad.abs().sum()) > 0.0
+    for p in site.model.parameters():
+        assert p.grad is None

@@ -85,3 +85,54 @@ def test_sample_batch_shapes(tokenizer) -> None:
     assert torch.equal(
         batch.base_labels, task.gt_label_fn(task.gt_variables(batch.base_inputs))
     )
+
+
+# -- z_digits intervention position --------------------------------------------
+
+
+def test_z_digits_produces_three_channels(tokenizer) -> None:
+    """position='z_digits' packs a third (position) channel; 'last' stays 2-channel."""
+    gen = torch.Generator().manual_seed(0)
+    last_task = PriceTaggingTask(tokenizer, position="last")
+    z_task = PriceTaggingTask(tokenizer, position="z_digits")
+    x, y, z = last_task._sample_xyz(6, gen, torch.device("cpu"))
+    last = last_task._render_batch(x, y, z, torch.device("cpu"))
+    three = z_task._render_batch(x, y, z, torch.device("cpu"))
+    assert last.shape[1] == 2
+    assert three.shape[1] == 3
+    # ids / mask channels are identical between the two renderings.
+    assert torch.equal(three[:, 0], last[:, 0])
+    assert torch.equal(three[:, 1], last[:, 1])
+
+
+def test_z_digits_position_points_at_z_final_digit(tokenizer) -> None:
+    """The packed position indexes the last token of the item amount Z, which
+    decodes to a digit that appears in Z's rendered 2-decimal string."""
+    task = PriceTaggingTask(tokenizer, position="z_digits")
+    gen = torch.Generator().manual_seed(1)
+    x, y, z = task._sample_xyz(16, gen, torch.device("cpu"))
+    packed = task._render_batch(x, y, z, torch.device("cpu"))  # (B, 3, T)
+    ids = packed[:, 0]
+    pos = packed[:, 2, 0]  # per-example position
+    for i in range(z.shape[0]):
+        z_str = f"{float(z[i]):.2f}"
+        tok_id = int(ids[i, int(pos[i])])
+        decoded = tokenizer.decode([tok_id], skip_special_tokens=True)
+        # For the char-level stub the final Z token is its last character (a
+        # digit); assert it is a digit contained in the rendered Z string.
+        assert decoded.isdigit(), (decoded, z_str)
+        assert decoded in z_str, (decoded, z_str)
+        # The final char of Z is the last decimal digit.
+        assert decoded == z_str[-1]
+
+
+def test_z_digits_sample_batch_shapes(tokenizer) -> None:
+    """sample_batch with z_digits yields (B,3,T) base and (B,m,3,T) sources."""
+    task = PriceTaggingTask(tokenizer, position="z_digits")
+    gen = torch.Generator().manual_seed(2)
+    batch = task.sample_batch(8, n_sources=2, k_max=4, generator=gen)
+    assert batch.base_inputs.shape[1] == 3
+    assert batch.source_inputs.shape[2] == 3
+    # causal_features still decodes (X, Y, Z) from the 3-channel packing.
+    feats = task.causal_features(batch.base_inputs)
+    assert feats.shape == (8, 3)

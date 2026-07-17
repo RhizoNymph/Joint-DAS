@@ -8,6 +8,11 @@ Methods
 - ``joint``          -- learn Q, boundaries, and H jointly (ours).
 - ``das_true``       -- classic DAS with the true hand-specified H (upper bound).
 - ``das_wrong``      -- classic DAS with a wrong H (single output-copy variable).
+- ``das_wrong_and``  -- classic DAS with the TRUE ground-truth variables but a
+  WRONG composition law (k=2), the principled falsification baseline: it admits
+  real |I|=2 multi-source interventions whose counterfactual predictions must
+  systematically disagree with any faithful network.  The run JSON also records
+  the analytic agreement ceiling (see :func:`_wrong_and_agreement_ceiling`).
 - ``random_rotation``-- joint H but Q frozen at random init (control).
 
 Tasks/models are imported lazily by module path (they may be authored by a
@@ -76,7 +81,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--method",
-        choices=["joint", "das_true", "das_wrong", "random_rotation"],
+        choices=["joint", "das_true", "das_wrong", "das_wrong_and", "random_rotation"],
         required=True,
     )
     parser.add_argument("--site-layer", type=int, default=1)
@@ -126,6 +131,15 @@ def main() -> None:
             layout = _make_layout(d, causal_model.k_max)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
+        case "das_wrong_and":
+            causal_model = _wrong_and_fixed_model(task, args)
+            layout = _make_layout(d, causal_model.k_max)
+            trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
+            train_out = trainer.train()
+            # The analytic agreement ceiling: the IIA a *perfect* das run with
+            # this wrong law would approach if N is faithful to the true law.
+            ceiling = _wrong_and_agreement_ceiling(task, args)
+            result["agreement_ceiling"] = ceiling
         case _:
             raise SystemExit(f"unknown method {args.method!r}")
 
@@ -196,6 +210,94 @@ def _wrong_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
         v=max(args.v, task.n_labels),
         n_labels=task.n_labels,
     )
+
+
+def _wrong_law_label_fn(task_name: str):
+    """A deliberately WRONG composition law over the two true GT atoms.
+
+    - ``hierarchical_equality``: label = AND(E1, E2)   (truth is XNOR).
+    - ``boolean_comp``:          label = XOR(A, x3)    (truth is OR).
+
+    Both are k=2 laws over the *correct* variables, so the model admits genuine
+    |I|=2 multi-source interventions; its counterfactual labels disagree with a
+    faithful network at a computable rate (see the agreement ceiling).
+    """
+    match task_name:
+        case "hierarchical_equality":
+            return lambda vals: (vals[:, 0] & vals[:, 1]).to(torch.long)
+        case "boolean_comp":
+            return lambda vals: (vals[:, 0] ^ vals[:, 1]).to(torch.long)
+        case _:
+            raise SystemExit(f"no wrong-and law for task {task_name!r}")
+
+
+def _wrong_and_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
+    """k=2 FixedCausalModel: TRUE GT variables, WRONG composition law."""
+    return FixedCausalModel(
+        gt_variables_fn=task.gt_variables,
+        label_fn=_wrong_law_label_fn(args.task),
+        k=task.k_gt,
+        v=args.v,
+        n_labels=task.n_labels,
+    )
+
+
+def _wrong_and_agreement_ceiling(
+    task, args: argparse.Namespace, n_samples: int = 20_000
+) -> dict:
+    """Analytic agreement ceiling of the wrong-law model vs the true law.
+
+    Over the task's own sampled intervention distribution, compute — *per swap
+    size* — the fraction of interventions whose wrong-law counterfactual label
+    equals the true-law counterfactual label.  This is the IIA a *perfect* DAS
+    run with the wrong law would approach **if N is faithful to the true law**:
+
+    - measured IIA near this ceiling  => falsification works (the wrong law only
+      agrees where the two laws coincide, N follows the truth).
+    - measured IIA well above ceiling => something is off (N is not faithful, or
+      the alignment is vacuously satisfying the wrong law).
+
+    Everything is computed with the task's ground-truth logic (no network); the
+    "network" here is assumed perfectly faithful to the true law.
+    """
+    true_label_fn = getattr(task, "label_from_variables", None) or getattr(
+        task, "gt_label_fn"
+    )
+    wrong_label_fn = _wrong_law_label_fn(args.task)
+    gen = torch.Generator().manual_seed(args.seed + 4242)
+    k = task.k_gt
+
+    ceilings: dict[str, float] = {}
+    for swap_size in (1, 2):
+        if swap_size > k:
+            continue
+        batch = task.sample_batch(n_samples, args.n_sources, k, gen)
+        base_vals = task.gt_variables(batch.base_inputs)  # (N, k)
+        m = batch.source_inputs.shape[1]
+        src_flat = batch.source_inputs.reshape(n_samples * m, *batch.source_inputs.shape[2:])
+        src_vals = task.gt_variables(src_flat).reshape(n_samples, m, k)
+        assign = _fixed_swap_assignment(n_samples, k, args.n_sources, swap_size, gen)
+        gather_j = assign.clamp(min=0)
+        chosen = torch.gather(src_vals, 1, gather_j.unsqueeze(1)).squeeze(1)  # (N, k)
+        mixed = torch.where(assign >= 0, chosen, base_vals)
+        true_cf = true_label_fn(mixed)
+        wrong_cf = wrong_label_fn(mixed)
+        agree = (true_cf == wrong_cf).float().mean().item()
+        ceilings[str(swap_size)] = round(agree, 4)
+    return ceilings
+
+
+def _fixed_swap_assignment(
+    b: int, k: int, n_sources: int, swap_size: int, generator: torch.Generator
+) -> torch.Tensor:
+    """``(b, k)`` assignment swapping exactly ``swap_size`` distinct vars, each
+    from a distinct source (mirrors :func:`jdas.eval._build_assignment`)."""
+    assign = torch.full((b, k), -1, dtype=torch.long)
+    for row in range(b):
+        var_perm = torch.randperm(k, generator=generator)[:swap_size]
+        src_perm = torch.randperm(n_sources, generator=generator)[:swap_size]
+        assign[row, var_perm] = src_perm
+    return assign
 
 
 if __name__ == "__main__":
