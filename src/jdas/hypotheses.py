@@ -290,6 +290,10 @@ def classify_solution(
       purity_thresh``) and the remaining live vars do not complete a basis.
     - ``other``: anything else (degenerate / >2 useful vars / partial).
     """
+    # Comparisons below mix these with freshly-built CPU tensors, so normalize
+    # everything to CPU (classification is cheap; inputs may arrive on CUDA).
+    live_values = [v.detach().cpu() for v in live_values]
+    atoms = atoms.detach().cpu()
     n_live = len(live_values)
 
     # -- two-variable structured solutions --------------------------------
