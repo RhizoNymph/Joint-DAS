@@ -36,6 +36,7 @@ def interchange(
     batch: InterventionBatch,
     *,
     hard: bool = False,
+    gate: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Run one batch of interchange interventions and return N's logits.
 
@@ -61,6 +62,13 @@ def interchange(
     hard:
         If ``True`` use boolean :meth:`SubspaceLayout.hard_masks` (evaluation);
         else the differentiable :meth:`soft_masks`.
+    gate:
+        Optional ``(k_max,)`` per-variable gate in ``[0, 1]``.  Effective widths
+        ``w_eff_i = g_i * w_i`` feed mask construction, so a closed gate removes
+        that variable's subspace from the swap (a no-op on N).  The *same* gate
+        sample must be passed to H's counterfactual prediction within one
+        forward/loss so the dead-variable no-op is symmetric (see
+        :mod:`jdas.training`).
 
     Returns
     -------
@@ -87,7 +95,11 @@ def interchange(
     r_s = rotation.rotate(site.hidden(src_flat)).reshape(b, m, d)
 
     # 3. masks (k, d)
-    masks = layout.hard_masks().to(r_b.dtype) if hard else layout.soft_masks()
+    masks = (
+        layout.hard_masks(gate=gate).to(r_b.dtype)
+        if hard
+        else layout.soft_masks(gate=gate)
+    )
 
     # Per (b, i): the mask if swapped, else zeros.  swap indicator (B, k).
     swap = (assign >= 0)  # (B, k) bool

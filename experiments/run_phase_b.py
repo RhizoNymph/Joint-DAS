@@ -30,8 +30,20 @@ import torch
 
 from jdas.causal_model import FixedCausalModel
 from jdas.eval import iia, recovery
+from jdas.gates import VariableGates
 from jdas.models.hf import FeaturizedCausalModel, load_hf_site
 from jdas.rotation import OrthogonalRotation, SubspaceLayout
+
+_GATE_METHODS = ("joint", "random_rotation")
+
+
+def _validate_gate_method(method: str, gates: bool) -> None:
+    """Gates apply only to the learned methods; reject fixed-H combos."""
+    if gates and method not in _GATE_METHODS:
+        raise SystemExit(
+            f"--gates only applies to methods {_GATE_METHODS}; got {method!r} "
+            "(fixed-H baselines keep their exact hypothesis)"
+        )
 from jdas.tasks.price_tagging import PriceTaggingTask
 from jdas.training import (
     DASTrainer,
@@ -54,6 +66,8 @@ def _build_config(args: argparse.Namespace) -> JointConfig:
         eval_every=max(1, args.steps // 10),
         lambda_sparse=args.lambda_sparse,
         sparse_mode=args.sparse_mode,
+        use_gates=args.gates,
+        lambda_gate=args.lambda_gate,
     )
 
 
@@ -103,6 +117,7 @@ def _maybe_save_ckpt(
     causal_model,
     config: JointConfig,
     train_out: dict,
+    gates: VariableGates | None = None,
 ) -> None:
     """Save a checkpoint (rotation+layout+causal state + meta) if ``--save-ckpt``."""
     if not args.save_ckpt:
@@ -120,14 +135,16 @@ def _maybe_save_ckpt(
             "init_width": args.init_width,
             "final": train_out.get("final", {}),
         },
+        gates=gates,
     )
     print(f"saved checkpoint to {args.save_ckpt}")
 
 
-def _add_recovery(result: dict, causal_model, task, config: JointConfig) -> None:
+def _add_recovery(result: dict, causal_model, task, config: JointConfig, gates=None) -> None:
     if task.k_gt > 0:
         gen = torch.Generator(device=config.device).manual_seed(config.seed + 1)
-        rec = recovery(causal_model, task, generator=gen)
+        live = gates.live_indices() if gates is not None else None
+        rec = recovery(causal_model, task, generator=gen, live_indices=live)
         result["recovery_matrix"] = rec.matrix
         result["best_assignment"] = rec.best_assignment
         result["recovery_score"] = rec.best_score
@@ -170,6 +187,17 @@ def main() -> None:
         help="normalized: lambda*total/d (weak at large d); per_dim: lambda*total",
     )
     parser.add_argument(
+        "--gates",
+        action="store_true",
+        help="enable per-variable hard-concrete (L0) gates (joint/random_rotation only)",
+    )
+    parser.add_argument(
+        "--lambda-gate",
+        type=float,
+        default=0.0,
+        help="weight of the L0 gate penalty (0 = parameterization control)",
+    )
+    parser.add_argument(
         "--max-width",
         type=float,
         default=None,
@@ -200,6 +228,7 @@ def main() -> None:
     )
     parser.add_argument("--out", type=str, default="results.json")
     args = parser.parse_args()
+    _validate_gate_method(args.method, args.gates)
 
     torch.manual_seed(args.seed)
 
@@ -254,12 +283,17 @@ def main() -> None:
                 v=args.v,
                 n_labels=task.n_labels,
             )
-            trainer = JointTrainer(site, task, causal_model, rotation, layout, config)
+            gates = VariableGates(k_max) if args.gates else None
+            trainer = JointTrainer(
+                site, task, causal_model, rotation, layout, config, gates=gates
+            )
             train_out = trainer.train()
-            _maybe_save_ckpt(args, rotation, layout, causal_model, config, train_out)
-            _add_recovery(result, causal_model, task, config)
+            _maybe_save_ckpt(
+                args, rotation, layout, causal_model, config, train_out, gates=gates
+            )
+            _add_recovery(result, causal_model, task, config, gates=gates)
             if args.method == "joint" and not args.no_refit:
-                refit = refit_rotation(site, task, causal_model, config)
+                refit = refit_rotation(site, task, causal_model, config, gates=gates)
                 result["refit_iia_1"] = refit["refit_iia_1"]
                 result["refit_iia_2"] = refit["refit_iia_2"]
         case "das_true":

@@ -153,15 +153,21 @@ class LearnedCausalModel(nn.Module):
         b = onehots.shape[0]
         return self.decoder(onehots.reshape(b, self.k_max * self.v))
 
-    def predict(self, inputs: torch.Tensor) -> torch.Tensor:
-        """Clean label logits ``(B, n_labels)`` for ``inputs``."""
-        return self.decode(self.variables(inputs))
+    def predict(self, inputs: torch.Tensor, gate: torch.Tensor | None = None) -> torch.Tensor:
+        """Clean label logits ``(B, n_labels)`` for ``inputs``.
+
+        With ``gate`` supplied each variable's one-hot is masked by the
+        straight-through hard gate (``v_used_i = hard(g_i) * v_i``), so a
+        gated-off variable is constant-0 in H.
+        """
+        return self.decode(_apply_gate(self.variables(inputs), gate))
 
     def counterfactual_predict(
         self,
         base_inputs: torch.Tensor,
         source_inputs: torch.Tensor,
         source_assignment: torch.Tensor,
+        gate: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Counterfactual label logits ``(B, n_labels)``.
 
@@ -200,7 +206,7 @@ class LearnedCausalModel(nn.Module):
 
         swap = (assign >= 0).unsqueeze(-1).to(base_z.dtype)  # (B, k_max, 1)
         mixed = base_z * (1.0 - swap) + chosen_src * swap
-        return self.decode(mixed)
+        return self.decode(_apply_gate(mixed, gate))
 
 
 class FixedCausalModel(nn.Module):
@@ -260,8 +266,9 @@ class FixedCausalModel(nn.Module):
             labels.to(torch.long), num_classes=self.n_labels
         ).to(torch.float32)
 
-    def predict(self, inputs: torch.Tensor) -> torch.Tensor:
+    def predict(self, inputs: torch.Tensor, gate: torch.Tensor | None = None) -> torch.Tensor:
         """Clean label logits ``(B, n_labels)`` (one-hot of ``label_fn``)."""
+        _reject_gate(gate)
         labels = self._label_fn(self.variable_values(inputs))
         return self._labels_to_logits(labels)
 
@@ -270,12 +277,16 @@ class FixedCausalModel(nn.Module):
         base_inputs: torch.Tensor,
         source_inputs: torch.Tensor,
         source_assignment: torch.Tensor,
+        gate: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Counterfactual label logits ``(B, n_labels)`` (hard, no gradient).
 
         Same swap semantics as :meth:`LearnedCausalModel.counterfactual_predict`
-        but operating on integer variable values.
+        but operating on integer variable values.  Gating is a learned-model
+        concept (the fixed hypothesis keeps all its variables), so a non-``None``
+        ``gate`` is rejected.
         """
+        _reject_gate(gate)
         b = base_inputs.shape[0]
         m = source_inputs.shape[1]
         _check_assignment(source_assignment, b, self.k_max, m)
@@ -291,6 +302,34 @@ class FixedCausalModel(nn.Module):
         mixed = torch.where(assign >= 0, chosen, base_vals)
         labels = self._label_fn(mixed)
         return self._labels_to_logits(labels)
+
+
+def _apply_gate(onehots: torch.Tensor, gate: torch.Tensor | None) -> torch.Tensor:
+    """Mask variable one-hots ``(B, k, v)`` by a straight-through hard gate.
+
+    ``v_used_i = hard(g_i) * v_i``: forward multiplies by ``(g_i > 0.5)`` so a
+    gated-off variable's one-hot becomes all-zero (constant-0 in H); the
+    straight-through gradient of :func:`jdas.gates.VariableGates.hard` still
+    reaches ``log_alpha`` from the value mask.
+    """
+    if gate is None:
+        return onehots
+    from .gates import VariableGates
+
+    k = onehots.shape[1]
+    if gate.shape != (k,):
+        raise CausalModelError(f"gate shape {tuple(gate.shape)} != ({k},)")
+    hard_gate = VariableGates.hard(gate.to(onehots.dtype))  # (k,)
+    return onehots * hard_gate.view(1, k, 1)
+
+
+def _reject_gate(gate: torch.Tensor | None) -> None:
+    """A fixed causal model cannot be gated (it keeps its exact hypothesis)."""
+    if gate is not None:
+        raise CausalModelError(
+            "FixedCausalModel does not support gates (fixed-H methods keep all "
+            "their variables); pass gate=None"
+        )
 
 
 def _check_assignment(assign: torch.Tensor, b: int, k: int, m: int) -> None:

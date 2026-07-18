@@ -223,31 +223,47 @@ class SubspaceLayout(nn.Module):
 
     # -- boundaries -------------------------------------------------------
 
-    def widths(self) -> torch.Tensor:
+    def widths(self, gate: torch.Tensor | None = None) -> torch.Tensor:
         """Non-negative block widths ``(k_max,)``.
 
         Unbounded mode: ``softplus(raw)``.  Bounded mode: ``max_width *
         sigmoid(raw)`` (strictly ``< max_width``).
+
+        If ``gate`` (shape ``(k_max,)`` in ``[0, 1]``) is given, the returned
+        *effective* widths are gate-scaled: ``w_eff_i = g_i * w_i``.  A closed
+        gate (``g_i == 0``) yields a zero-width block, removing that variable's
+        subspace from every interchange swap.
         """
         if self.max_width is None:
-            return torch.nn.functional.softplus(self.raw_widths)
-        return self.max_width * torch.sigmoid(self.raw_widths)
+            w = torch.nn.functional.softplus(self.raw_widths)
+        else:
+            w = self.max_width * torch.sigmoid(self.raw_widths)
+        if gate is not None:
+            w = w * self._check_gate(gate)
+        return w
 
-    def boundaries(self) -> torch.Tensor:
+    def _check_gate(self, gate: torch.Tensor) -> torch.Tensor:
+        if gate.shape != (self.k_max,):
+            raise RotationError(
+                f"gate shape {tuple(gate.shape)} != ({self.k_max},)"
+            )
+        return gate.to(self.raw_widths.dtype)
+
+    def boundaries(self, gate: torch.Tensor | None = None) -> torch.Tensor:
         """Cumulative boundaries ``c_0..c_{k_max}`` of shape ``(k_max + 1,)``.
 
         ``c_0 == 0`` and each ``c_i`` is clamped to ``[0, d]``.  ``c_i`` is the
         (soft, real-valued) right edge of block ``i-1`` / left edge of block
-        ``i``.
+        ``i``.  With ``gate`` supplied, gate-scaled effective widths are used.
         """
-        w = self.widths()
+        w = self.widths(gate=gate)
         cum = torch.cumsum(w, dim=0).clamp(max=float(self.d))
         zero = cum.new_zeros(1)
         return torch.cat([zero, cum], dim=0)
 
     # -- masks ------------------------------------------------------------
 
-    def soft_masks(self) -> torch.Tensor:
+    def soft_masks(self, gate: torch.Tensor | None = None) -> torch.Tensor:
         """Differentiable ``(k_max, d)`` masks in ``[0, 1]``.
 
         Block ``i`` spans ``[c_i, c_{i+1})``.  For coordinate position ``pos``
@@ -258,23 +274,35 @@ class SubspaceLayout(nn.Module):
         which is ~1 strictly inside the block and ~0 outside, with a soft ramp
         of width ~tau at the boundaries.  Because blocks are disjoint and
         adjacent share the boundary ``c_i``, the columns sum to <= 1.
+
+        With ``gate`` supplied, gate-scaled effective widths set the boundaries
+        (a closed gate gives a zero-width block) *and* the per-row mass is scaled
+        by ``g_i`` so a closed gate's mask is uniformly ~0 (not merely narrow),
+        which keeps the interchange contribution a true no-op.
         """
-        c = self.boundaries()  # (k_max + 1,)
+        c = self.boundaries(gate=gate)  # (k_max + 1,)
         tau = self._temperature.clamp(min=self.min_temp, max=self.max_temp)
         pos = torch.arange(self.d, device=c.device, dtype=c.dtype) + 0.5  # (d,)
         left = c[:-1].unsqueeze(1)  # (k_max, 1) start of each block
         right = c[1:].unsqueeze(1)  # (k_max, 1) end of each block
         p = pos.unsqueeze(0)  # (1, d)
         m = torch.sigmoid((p - left) / tau) * torch.sigmoid((right - p) / tau)
+        if gate is not None:
+            # Scale each row's mass by g_i so a closed gate is a uniform ~0 mask
+            # (a zero-width block already collapses the boundaries, but scaling
+            # makes the no-op exact and keeps the gate in the autograd path).
+            m = m * self._check_gate(gate).unsqueeze(1)
         return m
 
-    def hard_masks(self) -> torch.Tensor:
+    def hard_masks(self, gate: torch.Tensor | None = None) -> torch.Tensor:
         """Boolean ``(k_max, d)`` disjoint partition using integer boundaries.
 
         Coordinate ``pos`` belongs to block ``i`` iff ``c_i <= pos < c_{i+1}``
-        after rounding the boundaries to integers.  Guaranteed disjoint.
+        after rounding the boundaries to integers.  Guaranteed disjoint.  With
+        ``gate`` supplied, a variable whose gate is closed (``g_i <= 0.5``) gets
+        an empty (all-``False``) row.
         """
-        c = self.boundaries().detach()
+        c = self.boundaries(gate=gate).detach()
         # Round boundaries to ints, keep monotonic non-decreasing and in [0, d].
         edges = torch.clamp(torch.round(c), min=0.0, max=float(self.d)).long()
         edges = torch.cummax(edges, dim=0).values  # enforce monotonicity
@@ -282,16 +310,22 @@ class SubspaceLayout(nn.Module):
         left = edges[:-1].unsqueeze(1)  # (k_max, 1)
         right = edges[1:].unsqueeze(1)  # (k_max, 1)
         p = pos.unsqueeze(0)  # (1, d)
-        return (p >= left) & (p < right)
+        masks = (p >= left) & (p < right)
+        if gate is not None:
+            # Zero out rows whose gate is closed (g_i <= 0.5); belt-and-braces
+            # with the boundary collapse above.
+            live = (self._check_gate(gate) > 0.5).unsqueeze(1)
+            masks = masks & live
+        return masks
 
-    def hard_widths(self) -> torch.Tensor:
+    def hard_widths(self, gate: torch.Tensor | None = None) -> torch.Tensor:
         """Integer width (in dims) of each block, shape ``(k_max,)`` long."""
-        return self.hard_masks().sum(dim=1)
+        return self.hard_masks(gate=gate).sum(dim=1)
 
-    def total_aligned_dims(self) -> torch.Tensor:
+    def total_aligned_dims(self, gate: torch.Tensor | None = None) -> torch.Tensor:
         """Differentiable scalar: total aligned dims ``= c_{k_max}``.
 
-        Equal to the sum of soft widths clamped to ``d``; used for the sparsity
-        penalty ``L_sparse = lambda * total_aligned_dims / d``.
+        Equal to the sum of (gate-scaled) soft widths clamped to ``d``; used for
+        the sparsity penalty ``L_sparse = lambda * total_aligned_dims / d``.
         """
-        return self.boundaries()[-1]
+        return self.boundaries(gate=gate)[-1]

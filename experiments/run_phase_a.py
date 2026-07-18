@@ -31,8 +31,20 @@ import torch
 
 from jdas.causal_model import FixedCausalModel, LearnedCausalModel
 from jdas.eval import iia, recovery
+from jdas.gates import VariableGates
 from jdas.rotation import OrthogonalRotation, SubspaceLayout
 from jdas.training import DASTrainer, JointConfig, JointTrainer, refit_rotation
+
+_GATE_METHODS = ("joint", "random_rotation")
+
+
+def _validate_gate_method(method: str, gates: bool) -> None:
+    """Gates apply only to the learned methods; reject fixed-H combos."""
+    if gates and method not in _GATE_METHODS:
+        raise SystemExit(
+            f"--gates only applies to methods {_GATE_METHODS}; got {method!r} "
+            "(fixed-H baselines keep their exact hypothesis)"
+        )
 
 
 def _load_task(name: str):
@@ -69,10 +81,12 @@ def _build_config(args: argparse.Namespace) -> JointConfig:
         device=args.device,
         freeze_rotation=(args.method == "random_rotation"),
         eval_every=max(1, args.steps // 10),
+        use_gates=args.gates,
+        lambda_gate=args.lambda_gate,
     )
 
 
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Joint-DAS Phase A runner")
     parser.add_argument(
         "--task",
@@ -93,8 +107,25 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--k-max", type=int, default=4)
     parser.add_argument("--v", type=int, default=2)
+    parser.add_argument(
+        "--gates",
+        action="store_true",
+        help="enable per-variable hard-concrete (L0) gates (joint/random_rotation only)",
+    )
+    parser.add_argument(
+        "--lambda-gate",
+        type=float,
+        default=0.0,
+        help="weight of the L0 gate penalty (0 = parameterization control)",
+    )
     parser.add_argument("--out", type=str, default="results.json")
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
     args = parser.parse_args()
+    _validate_gate_method(args.method, args.gates)
 
     torch.manual_seed(args.seed)
     task = _load_task(args.task)
@@ -113,12 +144,15 @@ def main() -> None:
                 input_dim=input_dim, k_max=args.k_max, v=args.v, n_labels=task.n_labels
             )
             layout = _make_layout(d, causal_model.k_max)
-            trainer = JointTrainer(site, task, causal_model, rotation, layout, config)
+            gates = VariableGates(causal_model.k_max) if args.gates else None
+            trainer = JointTrainer(
+                site, task, causal_model, rotation, layout, config, gates=gates
+            )
             train_out = trainer.train()
-            _add_recovery(result, causal_model, task, config)
+            _add_recovery(result, causal_model, task, config, gates=gates)
             # Freeze-and-refit only makes sense when Q is trainable.
             if args.method == "joint":
-                refit = refit_rotation(site, task, causal_model, config)
+                refit = refit_rotation(site, task, causal_model, config, gates=gates)
                 result["refit_iia_1"] = refit["refit_iia_1"]
                 result["refit_iia_2"] = refit["refit_iia_2"]
         case "das_true":
@@ -164,10 +198,11 @@ def _infer_input_dim(task, args: argparse.Namespace) -> int:
     return int(batch.base_inputs.reshape(2, -1).shape[1])
 
 
-def _add_recovery(result: dict, causal_model, task, config: JointConfig) -> None:
+def _add_recovery(result: dict, causal_model, task, config: JointConfig, gates=None) -> None:
     if task.k_gt > 0:
         gen = torch.Generator(device=config.device).manual_seed(config.seed + 1)
-        rec = recovery(causal_model, task, generator=gen)
+        live = gates.live_indices() if gates is not None else None
+        rec = recovery(causal_model, task, generator=gen, live_indices=live)
         result["recovery_matrix"] = rec.matrix
         result["best_assignment"] = rec.best_assignment
         result["recovery_score"] = rec.best_score

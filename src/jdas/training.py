@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
 from pathlib import Path
 
 import torch
@@ -35,7 +35,8 @@ from torch import nn
 from torch.nn import functional as F
 
 from .causal_model import FixedCausalModel, LearnedCausalModel
-from .eval import effective_k, iia
+from .eval import effective_k, iia, iia_live
+from .gates import VariableGates
 from .intervention import interchange
 from .rotation import OrthogonalRotation, SubspaceLayout
 from .types import InterventionBatch, InterventionSite, Task
@@ -61,6 +62,13 @@ class JointConfig:
     lr_causal: float | None = None  # defaults to lr
     lambda_task: float = 1.0
     lambda_sparse: float = 0.1
+    # Per-variable hard-concrete (L0) gates for minimality.  ``use_gates``
+    # enables the gate machinery (a VariableGates module must be supplied to the
+    # trainer); ``lambda_gate`` weights the L0 penalty.  ``use_gates=True`` with
+    # ``lambda_gate=0`` is the parameterization control (gates present but
+    # costless).
+    use_gates: bool = False
+    lambda_gate: float = 0.0
     # Sparsity penalty parameterization:
     #   "normalized" -> L_sparse = total_aligned_dims / d  (per-dim grad lambda/d)
     #   "per_dim"    -> L_sparse = total_aligned_dims       (per-dim grad lambda)
@@ -171,6 +179,7 @@ class _BaseTrainer:
         config: JointConfig,
         *,
         train_causal: bool,
+        gates: VariableGates | None = None,
     ) -> None:
         self.site = site
         self.task = task
@@ -181,10 +190,34 @@ class _BaseTrainer:
         self.train_causal = train_causal
         self.device = torch.device(config.device)
 
+        if config.use_gates:
+            if gates is None:
+                raise TrainingError(
+                    "config.use_gates=True but no VariableGates supplied to the "
+                    "trainer"
+                )
+            if gates.k_max != layout.k_max:
+                raise TrainingError(
+                    f"gates.k_max {gates.k_max} != layout.k_max {layout.k_max}"
+                )
+            if not train_causal:
+                raise TrainingError(
+                    "gates apply only to learned methods (train_causal=True); "
+                    "fixed-H baselines keep their exact hypothesis"
+                )
+        elif gates is not None:
+            raise TrainingError(
+                "gates supplied but config.use_gates=False; set use_gates=True to "
+                "enable them"
+            )
+        self.gates = gates
+
         self.rotation.to(self.device)
         self.layout.to(self.device)
         if isinstance(self.causal_model, nn.Module):
             self.causal_model.to(self.device)
+        if self.gates is not None:
+            self.gates.to(self.device)
 
         self.generator = torch.Generator(device=self.device)
         self.generator.manual_seed(config.seed)
@@ -205,6 +238,10 @@ class _BaseTrainer:
             cm_params = [p for p in self.causal_model.parameters() if p.requires_grad]
             if cm_params:
                 groups.append({"params": cm_params, "lr": self.config.resolved_lr_causal()})
+        if self.gates is not None:
+            gate_params = [p for p in self.gates.parameters() if p.requires_grad]
+            if gate_params:
+                groups.append({"params": gate_params, "lr": self.config.lr})
         if not groups:
             raise TrainingError("no trainable parameters for the optimizer")
         return torch.optim.AdamW(groups)
@@ -218,13 +255,23 @@ class _BaseTrainer:
 
     def _compute_losses(self, batch: InterventionBatch) -> dict[str, torch.Tensor]:
         cfg = self.config
+        # CRITICAL INVARIANT: sample the gate ONCE here and pass the SAME sample
+        # to both N's interchange (width scaling) and H's counterfactual/task
+        # predictions (value mask), so a dead variable is a no-op on BOTH sides
+        # within this one forward/loss computation.
+        gate = None
+        if self.gates is not None:
+            gate = self.gates.sample(generator=self.generator)
+
         # Interchange logits from the frozen network N (soft masks, grads flow).
-        n_logits = interchange(self.site, self.rotation, self.layout, batch, hard=False)
+        n_logits = interchange(
+            self.site, self.rotation, self.layout, batch, hard=False, gate=gate
+        )
         n_logprobs = F.log_softmax(n_logits, dim=-1)
 
         # H's counterfactual prediction.
         h_cf_logits = self.causal_model.counterfactual_predict(
-            batch.base_inputs, batch.source_inputs, batch.source_assignment
+            batch.base_inputs, batch.source_inputs, batch.source_assignment, gate=gate
         )
         # Straight-through hard one-hot target for L_cf (grads reach H through ST).
         h_cf_target = _st_onehot_from_logits(h_cf_logits)  # (B, n_labels)
@@ -240,13 +287,14 @@ class _BaseTrainer:
         else:
             losses["l_cf_sym"] = n_logits.new_zeros(())
 
-        # L_task: H implements the task on clean base + source inputs.
+        # L_task: H implements the task on clean base + source inputs.  Uses the
+        # same gate so a dead variable is inert for the task fit too.
         if self.train_causal:
-            base_pred = self.causal_model.predict(batch.base_inputs)
+            base_pred = self.causal_model.predict(batch.base_inputs, gate=gate)
             l_task = F.cross_entropy(base_pred, batch.base_labels)
             b, m = batch.source_inputs.shape[0], batch.source_inputs.shape[1]
             src_flat = batch.source_inputs.reshape(b * m, *batch.source_inputs.shape[2:])
-            src_pred = self.causal_model.predict(src_flat)
+            src_pred = self.causal_model.predict(src_flat, gate=gate)
             l_task = l_task + F.cross_entropy(src_pred, batch.source_labels.reshape(b * m))
             losses["l_task"] = l_task
         else:
@@ -255,7 +303,7 @@ class _BaseTrainer:
         # L_sparse on total aligned dims.  "normalized" divides by d (per-dim
         # gradient lambda/d); "per_dim" leaves it unnormalized (per-dim gradient
         # lambda), which bites at large d.
-        total_aligned = self.layout.total_aligned_dims()
+        total_aligned = self.layout.total_aligned_dims(gate=gate)
         match cfg.sparse_mode:
             case "normalized":
                 l_sparse = total_aligned / self.layout.d
@@ -271,6 +319,16 @@ class _BaseTrainer:
             + cfg.lambda_task * losses["l_task"]
             + cfg.lambda_sparse * l_sparse
         )
+
+        # L_gate: expected number of open gates (L0 minimality).  Always report
+        # the penalty for logging when gates are on; only add it to the loss when
+        # lambda_gate > 0 (use_gates + lambda_gate=0 is the parameterization
+        # control).
+        if self.gates is not None:
+            l_gate = self.gates.penalty()
+            losses["l_gate"] = l_gate
+            total = total + cfg.lambda_gate * l_gate
+
         losses["total"] = total
         return losses
 
@@ -315,7 +373,7 @@ class _BaseTrainer:
             n_sources=cfg.n_sources,
             generator=self.eval_generator,
         )
-        return {
+        record: dict[str, object] = {
             # None (JSON null) when a swap size is inapplicable (e.g. k_max=1
             # models have no |I|=2 interventions) — 0.0 would fake a failure.
             "iia_1": iia_scores.get(1),
@@ -324,6 +382,33 @@ class _BaseTrainer:
             "aligned_dims": float(self.layout.total_aligned_dims().item()),
             "hard_widths": self.layout.hard_widths().tolist(),
         }
+        if self.gates is not None:
+            g_det = self.gates.deterministic()
+            live_scores = iia_live(
+                self.site,
+                self.rotation,
+                self.layout,
+                self.causal_model,
+                self.task,
+                self.gates,
+                n_batches=cfg.eval_batches,
+                batch_size=cfg.eval_batch_size,
+                n_sources=cfg.n_sources,
+                generator=self.eval_generator,
+                swap_sizes=(1, 2),
+            )
+            record.update(
+                {
+                    "gated_k": self.gates.gated_k(),
+                    "g_det": [round(float(x), 4) for x in g_det.tolist()],
+                    "live_indices": self.gates.live_indices(),
+                    # gate-scaled hard widths (live vars' actual subspace widths).
+                    "hard_widths_gated": self.layout.hard_widths(gate=g_det).tolist(),
+                    "iia_1_live": live_scores.get(1),
+                    "iia_2_live": live_scores.get(2),
+                }
+            )
+        return record
 
     def train(self) -> dict[str, object]:
         """Run the training loop; return ``{"history": [...], "final": {...}}``."""
@@ -349,6 +434,8 @@ class _BaseTrainer:
                     "tau_gumbel": self._current_tau_g(step),
                     "tau_mask": self.layout.temperature,
                 }
+                if "l_gate" in losses:
+                    record["loss_gate"] = float(losses["l_gate"].item())
                 with torch.no_grad():
                     record.update(self._evaluate())
                 history.append(record)
@@ -374,9 +461,11 @@ class JointTrainer(_BaseTrainer):
         rotation: OrthogonalRotation,
         layout: SubspaceLayout,
         config: JointConfig,
+        gates: VariableGates | None = None,
     ) -> None:
         super().__init__(
-            site, task, causal_model, rotation, layout, config, train_causal=True
+            site, task, causal_model, rotation, layout, config,
+            train_causal=True, gates=gates,
         )
 
 
@@ -416,6 +505,7 @@ def refit_rotation(
     config: JointConfig,
     *,
     fresh_rotation: bool = True,
+    gates: VariableGates | None = None,
 ) -> dict[str, object]:
     """Freeze-and-refit: freeze the learned ``H`` (hard argmax) and refit ``Q``.
 
@@ -434,9 +524,20 @@ def refit_rotation(
     k = learned_model.k_max
     v = learned_model.v
 
+    # Freeze-and-refit uses a FixedCausalModel (no gates).  When the joint run
+    # used gates, bake the discovered liveness into the frozen H: a dead
+    # variable's discretized value is forced to constant 0, so it stays inert
+    # under refit.  Refit itself runs plain DAS (use_gates off).
+    hard_gate = None
+    if gates is not None:
+        hard_gate = gates.live_mask().to(device).long()  # (k,) 1=live, 0=dead
+
     @torch.no_grad()
     def gt_vars(inputs: torch.Tensor) -> torch.Tensor:
-        return learned_model.variables(inputs.to(device)).argmax(-1)
+        vals = learned_model.variables(inputs.to(device)).argmax(-1)  # (B, k)
+        if hard_gate is not None:
+            vals = vals * hard_gate.view(1, -1)
+        return vals
 
     @torch.no_grad()
     def label_fn(vals: torch.Tensor) -> torch.Tensor:
@@ -445,10 +546,13 @@ def refit_rotation(
 
     frozen = FixedCausalModel(gt_vars, label_fn, k=k, v=v, n_labels=learned_model.n_labels)
 
+    # Refit runs plain DAS on the frozen (already-discretized) H; gates are a
+    # training-only mechanism and must be disabled for the fixed-H refit.
+    refit_config = replace(config, use_gates=False, lambda_gate=0.0)
     d = site.d
-    rotation = OrthogonalRotation(d, freeze=config.freeze_rotation)
+    rotation = OrthogonalRotation(d, freeze=refit_config.freeze_rotation)
     layout = SubspaceLayout(d, k, init_width=max(1.0, d / (2 * k)))
-    trainer = DASTrainer(site, task, frozen, rotation, layout, config)
+    trainer = DASTrainer(site, task, frozen, rotation, layout, refit_config)
     result = trainer.train()
     result["refit_iia_1"] = result["final"]["iia_1"]
     result["refit_iia_2"] = result["final"]["iia_2"]
@@ -502,6 +606,19 @@ def _causal_meta(causal_model: nn.Module) -> dict:
     }
 
 
+def _gate_meta(gates: VariableGates | None) -> dict:
+    """JSON-serializable hyperparameters needed to rebuild a gates module."""
+    if gates is None:
+        return {"present": False}
+    return {
+        "present": True,
+        "k_max": gates.k_max,
+        "beta": gates.beta,
+        "gamma": gates.gamma,
+        "zeta": gates.zeta,
+    }
+
+
 def save_checkpoint(
     path: str | Path,
     rotation: OrthogonalRotation,
@@ -509,6 +626,7 @@ def save_checkpoint(
     causal_model: nn.Module,
     config: JointConfig,
     extra: dict | None = None,
+    gates: VariableGates | None = None,
 ) -> None:
     """Save rotation + layout + (learned) causal-model state and reconstruction meta.
 
@@ -537,6 +655,7 @@ def save_checkpoint(
         "rotation_frozen": rotation.frozen,
         "layout": _layout_meta(layout),
         "causal": _causal_meta(causal_model),
+        "gates": _gate_meta(gates),
         "config": asdict(config) if is_dataclass(config) else dict(config),
         "extra": extra or {},
     }
@@ -551,6 +670,7 @@ def save_checkpoint(
             if isinstance(causal_model, LearnedCausalModel)
             else None
         ),
+        "gates_state": gates.state_dict() if gates is not None else None,
     }
     torch.save(payload, path)
 
@@ -560,6 +680,7 @@ def load_checkpoint(
     *,
     feature_fn=None,
     map_location: str | torch.device = "cpu",
+    expect_gates: bool | None = None,
 ) -> dict:
     """Load a checkpoint saved by :func:`save_checkpoint`.
 
@@ -567,16 +688,39 @@ def load_checkpoint(
     ``meta`` and loads their state.  If the checkpoint held a learned causal
     model it is rebuilt too: a plain :class:`LearnedCausalModel` when
     ``feature_fn is None``, otherwise a
-    :class:`jdas.models.hf.FeaturizedCausalModel` wrapping ``feature_fn``.
+    :class:`jdas.models.hf.FeaturizedCausalModel` wrapping ``feature_fn``.  A
+    :class:`jdas.gates.VariableGates` is rebuilt and its ``log_alpha`` restored
+    when the checkpoint carried gates.
+
+    Parameters
+    ----------
+    expect_gates:
+        If ``None`` (default) the loader accepts whatever the checkpoint holds.
+        If ``True`` the checkpoint *must* carry gates (else
+        :class:`CheckpointError`); if ``False`` it must *not* (loading a
+        mismatched gate/no-gate config silently would be a correctness bug).
 
     Returns
     -------
     dict
-        ``{"rotation", "layout", "causal_model", "config", "meta"}``.
-        ``causal_model`` is ``None`` for checkpoints whose model was fixed.
+        ``{"rotation", "layout", "causal_model", "gates", "config", "meta"}``.
+        ``causal_model`` is ``None`` for checkpoints whose model was fixed;
+        ``gates`` is ``None`` for checkpoints saved without gates.
     """
     payload = torch.load(path, map_location=map_location, weights_only=False)
     meta = payload["meta"]
+
+    # Older checkpoints predate the gates field; treat them as gate-less.
+    gate_meta = meta.get("gates", {"present": False})
+    has_gates = bool(gate_meta.get("present", False))
+    if expect_gates is True and not has_gates:
+        raise CheckpointError(
+            "expect_gates=True but the checkpoint was saved without gates"
+        )
+    if expect_gates is False and has_gates:
+        raise CheckpointError(
+            "expect_gates=False but the checkpoint was saved with gates"
+        )
 
     lm = meta["layout"]
     layout = SubspaceLayout(
@@ -620,10 +764,22 @@ def load_checkpoint(
         causal_model.load_state_dict(payload["causal_state"])
         causal_model.to(map_location)
 
+    gates = None
+    if has_gates:
+        gates = VariableGates(
+            gate_meta["k_max"],
+            beta=gate_meta["beta"],
+            gamma=gate_meta["gamma"],
+            zeta=gate_meta["zeta"],
+        )
+        gates.load_state_dict(payload["gates_state"])
+        gates.to(map_location)
+
     return {
         "rotation": rotation,
         "layout": layout,
         "causal_model": causal_model,
+        "gates": gates,
         "config": meta["config"],
         "meta": meta,
     }
