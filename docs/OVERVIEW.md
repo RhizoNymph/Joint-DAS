@@ -13,8 +13,9 @@ Overview:
       training; HF model wrappers for Phase B.
     - experiments (experiments/): config-driven entry points writing JSON
       results (run_phase_a, run_phase_b, screen_lm, introspect_phase_a) plus
-      analyze.py / analyze_night2.py (aggregate JSON -> summary md + docs/assets
-      plots). Phase-A "science" tooling: seed_study.py (basis variance over
+      analyze.py / analyze_night2.py / analyze_gates.py (aggregate JSON ->
+      summary md + docs/assets plots; analyze_gates.py handles the night-3
+      hard-concrete gate sweeps, robust to partial/mid-sweep directories). Phase-A "science" tooling: seed_study.py (basis variance over
       seeds), search_baseline.py (brute-force candidate-pair enumeration),
       and the das_wrong_and falsification baseline, all sharing
       src/jdas/hypotheses.py (boolean fn library + solution classifier).
