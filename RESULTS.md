@@ -634,58 +634,111 @@ Next steps:
 
 ## 7. Reproduction
 
-All commands from repo root; `UV=~/.local/bin/uv`.
-
-Phase A grid (per task, warms the toy-model checkpoint then runs the 4-method ×
-3-layer × 3-seed grid in parallel):
-
-```
-bash scripts/launch_phase_a.sh hierarchical_equality 4000 3
-bash scripts/launch_phase_a.sh boolean_comp 4000 3
-# baselines-only rerun (das_true/das_wrong):
-bash scripts/rerun_baselines.sh hierarchical_equality 4000 3
-```
+All commands from repo root. Everything runs through the unified `jdas` CLI
+(`uv run jdas ...`); environment specifics (hosts, remote paths, uv location,
+HF env vars, default model) live in `jdas.toml` (see docs/features/unified-cli.md).
+Legacy `python experiments/run_phase_{a,b}.py ...` still works as a thin shim
+with identical flags.
 
 A single Phase A run:
 
 ```
-$UV run python experiments/run_phase_a.py --task hierarchical_equality \
+uv run jdas run phase-a --task hierarchical_equality \
     --method joint --site-layer 1 --seed 0 --device cuda --steps 4000 \
     --k-max 4 --v 2 --out experiments/results/phase_a/hierarchical_equality_joint_l1_s0.json
 ```
 
+The Phase A grid (4-method × 3-layer × 3-seed per task) and the baselines-only
+rerun were driven by `scripts/launch_phase_a.sh` / `rerun_baselines.sh`; run the
+individual `jdas run phase-a` configs directly, or on the cluster deal them
+round-robin with a sweep spec (see `experiments/sweeps/`).
+
 Phase A analysis + plots (writes the summary md and `docs/assets/*.png`):
 
 ```
-$UV run python experiments/analyze.py \
+uv run jdas analyze phase-a \
     --results-dir experiments/results/phase_a \
     --out-md experiments/results/phase_a_summary.md \
     --assets-dir docs/assets --tag phase_a
 ```
 
-Seed-0 introspection (retrain + variable-hypothesis agreement):
+Seed-0 introspection (retrain + variable-hypothesis agreement) stays a module:
 
 ```
-$UV run python experiments/introspect_phase_a.py --task hierarchical_equality \
+uv run python experiments/introspect_phase_a.py --task hierarchical_equality \
     --site-layer 1 --seed 0 --steps 4000 --device cpu --tag hier_l1_s0 \
     --out-dir experiments/results
 ```
 
-Phase B (node1; `export HF_HOME=$HOME/hf-cache` first). Screening then a run:
+Seed/basis study and discrete search baseline:
 
 ```
-$UV run python experiments/screen_lm.py --model Qwen/Qwen2.5-1.5B-Instruct \
+uv run jdas run seed-study --task hierarchical_equality --seeds 10 --steps 4000 \
+    --device cuda --out experiments/results/seed_study_hier_l1.json
+uv run jdas run search --task hierarchical_equality --site-layer 1 --device cuda \
+    --out experiments/results/search_hier_l1.json
+```
+
+Phase B (node1; the HF env vars are exported by the cluster driver from
+`[cluster.env]`, or `export HF_HOME=$HOME/hf-cache` locally). Screening stays a
+module; a run:
+
+```
+uv run python experiments/screen_lm.py --model Qwen/Qwen2.5-1.5B-Instruct \
     --templates all --n 300 --device cuda --local-files-only
 
-$UV run python experiments/run_phase_b.py --model Qwen/Qwen2.5-1.5B-Instruct \
+uv run jdas run phase-b --model Qwen/Qwen2.5-1.5B-Instruct \
     --layer 17 --method das_true --template-id 3 --device cuda \
     --steps 2000 --batch-size 32 --n-sources 2 --k-max 4 --v 2 \
     --local-files-only --out experiments/results/phase_b/pt_das_true_l17_s0.json
 # joint adds a freeze-and-refit pass; --no-refit skips it (halves runtime):
-$UV run python experiments/run_phase_b.py --model Qwen/Qwen2.5-1.5B-Instruct \
+uv run jdas run phase-b --model Qwen/Qwen2.5-1.5B-Instruct \
     --layer 17 --method joint --template-id 3 --device cuda --steps 2000 \
     --batch-size 32 --n-sources 2 --k-max 4 --v 2 --local-files-only \
     --out experiments/results/phase_b/pt_joint_l17_s0.json
 ```
 
-Tests: `$UV run pytest -q` (76 tests).
+### Per-night sweeps
+
+The night-1/2/3 grids that used the per-node bash drivers in `scripts/` are now
+declarative specs under `experiments/sweeps/`. Deal a spec round-robin across
+`[cluster].hosts`, poll, and collect:
+
+```
+uv run jdas sweep run    experiments/sweeps/gates_toy_v3.toml --where cluster --wait
+uv run jdas sweep status experiments/sweeps/gates_toy_v3.toml
+uv run jdas sweep collect experiments/sweeps/gates_toy_v3.toml
+# or locally (sequential, --parallel N for concurrency); --dry-run to preview:
+uv run jdas sweep run experiments/sweeps/gates_toy_v3.toml --dry-run
+```
+
+Old driver → sweep spec map:
+
+| old script(s) | sweep spec |
+|---|---|
+| `scripts/sweep_gates_toy.sh`, `gates_toy_node{0,1,2}.sh` | `gates_toy_v1.toml` |
+| `scripts/launch_gates_lm.sh`, `gates_lm_node{0,1,2}.sh` | `gates_lm_v1.toml` |
+| `scripts/gates_v2_node{0,1,2}.sh` (toy / lm halves) | `gates_toy_v2.toml` / `gates_lm_v2.toml` |
+| `scripts/gates_v3_node{0,1,2}.sh` (toy / lm halves) | `gates_toy_v3.toml` / `gates_lm_v3.toml` |
+| night-2 capped-LM wave (N2.2, hand-run) | `night2_capped_lm.toml` |
+
+The night-3 gate-sweep summary (tables + figure):
+
+```
+uv run jdas analyze gates \
+    --toy-dir experiments/results/night3/gates_toy_v3 \
+    --lm-dir experiments/results/night3/gates_lm_v3 \
+    --out-md experiments/results/night3/gates_v3_summary.md \
+    --plot docs/assets/night3_gates_v3.png
+```
+
+### Cluster operations
+
+```
+uv run jdas cluster sync              # rsync repo + uv sync on every host
+uv run jdas cluster status            # per host: jdas procs + GPU memory
+uv run jdas cluster exec -- nvidia-smi -L
+uv run jdas cluster kill run_phase    # pkill -f (pattern bracket-escaped)
+```
+
+Tests: `uv run pytest -q` (233 tests).

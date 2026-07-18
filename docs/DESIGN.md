@@ -119,8 +119,9 @@ src/jdas/
   eval.py           # IIA, recovery matrix, controls
   tasks/            # hierarchical_equality.py, boolean_comp.py, price_tagging.py
   models/           # toy model defs + training loops
-experiments/        # config-driven entry points, results as JSON
-scripts/            # node sync + launch + collect
+  cli/              # unified `jdas` CLI: run/analyze/sweep/cluster + EnvConfig
+experiments/        # thin run shims, analyzers, sweeps/ specs, results as JSON
+jdas.toml           # env config: hosts, remote paths, uv path, HF env, models
 docs/               # this file, OVERVIEW.md, features/
 ```
 

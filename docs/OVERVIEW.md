@@ -11,15 +11,24 @@ Overview:
       structure + LM prompt tasks; counterfactual pair generators.
     - models (src/jdas/models): toy networks (MLP/transformer) and their
       training; HF model wrappers for Phase B.
-    - experiments (experiments/): config-driven entry points writing JSON
-      results (run_phase_a, run_phase_b, screen_lm, introspect_phase_a) plus
+    - unified CLI (src/jdas/cli): single `jdas` entry point for everything —
+      single runs (`jdas run phase-a|phase-b|search|seed-study`), analysis
+      (`jdas analyze gates|phase-a|night2`), declarative sweeps
+      (`jdas sweep run|status|collect` over experiments/sweeps/*.toml), and
+      cluster ops (`jdas cluster sync|status|exec|kill`). Environment
+      specifics (hosts, remote paths, uv path, HF env vars, default model)
+      live in jdas.toml (frozen EnvConfig, tomllib), never in code.
+    - experiments (experiments/): the run logic lives in src/jdas/cli/runners.py;
+      run_phase_a/run_phase_b/search_baseline/seed_study are thin shims. Other
+      modules stay standalone: screen_lm.py (template screening),
+      introspect_phase_a.py (variable-hypothesis agreement), and the analyzers
       analyze.py / analyze_night2.py / analyze_gates.py (aggregate JSON ->
       summary md + docs/assets plots; analyze_gates.py handles the night-3
-      hard-concrete gate sweeps, robust to partial/mid-sweep directories). Phase-A "science" tooling: seed_study.py (basis variance over
-      seeds), search_baseline.py (brute-force candidate-pair enumeration),
-      and the das_wrong_and falsification baseline, all sharing
-      src/jdas/hypotheses.py (boolean fn library + solution classifier).
-    - scripts (scripts/): GPU node sync/launch/collect (node0/1/2, 1x3090 each).
+      hard-concrete gate sweeps, robust to partial/mid-sweep directories).
+      Phase-A "science" tooling (seed-study basis variance, search brute-force
+      candidate-pair enumeration, the das_wrong_and falsification baseline) all
+      shares src/jdas/hypotheses.py (boolean fn library + solution classifier).
+      GPU-node grids are expressed as sweep specs under experiments/sweeps/.
   data_flow: >
     Task generates (base, sources, intervention-spec, labels) batches →
     intervention machinery runs frozen network N with rotated-subspace swaps →
@@ -79,3 +88,17 @@ Features Index:
       experiments/run_phase_a.py, src/jdas/hypotheses.py]
     depends_on: [jdas_core, toy_tasks]
     doc: docs/features/jdas_core.md
+  unified_cli:
+    description: >
+      Single `jdas` CLI (run/analyze/sweep/cluster) replacing the per-experiment
+      python scripts and per-night bash drivers. Env config (hosts, remote
+      paths, uv path, HF env vars, default model) in jdas.toml with
+      jdas.local.toml override. Declarative sweep specs (experiments/sweeps/)
+      re-express the night-1/2/3 grids: deterministic cartesian/zipped expansion,
+      skip-existing resume, round-robin host assignment, generated detached
+      ssh drivers.
+    entry_points: [src/jdas/cli/__init__.py, src/jdas/cli/config.py,
+      src/jdas/cli/runners.py, src/jdas/cli/sweeps.py, src/jdas/cli/cluster.py,
+      src/jdas/cli/analyze.py, jdas.toml, experiments/sweeps/]
+    depends_on: [jdas_core, toy_tasks, lm_phase, variable_gates, phase_a_science]
+    doc: docs/features/unified-cli.md

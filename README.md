@@ -21,9 +21,10 @@ that separates real causal factorizations from degenerate ones.
 - `src/jdas/tasks/` — toy tasks with known causal structure (hierarchical
   equality, boolean composition) and an LM task (price tagging).
 - `src/jdas/models/` — toy MLPs and the HuggingFace intervention site.
-- `experiments/` — runners (`run_phase_a.py` toys, `run_phase_b.py` LM),
-  screening, analysis, introspection.
-- `scripts/` — GPU-node sync and launch helpers.
+- `src/jdas/cli/` — the unified `jdas` CLI (run/analyze/sweep/cluster) and
+  `EnvConfig` loaded from `jdas.toml`.
+- `experiments/` — thin run shims, screening/analysis/introspection modules,
+  and declarative sweep specs under `experiments/sweeps/`.
 
 ## Quickstart
 
@@ -32,12 +33,12 @@ uv sync
 uv run pytest tests -q
 
 # Toy experiment (CPU works; CUDA faster)
-uv run python experiments/run_phase_a.py \
+uv run jdas run phase-a \
   --task hierarchical_equality --method joint --site-layer 1 \
   --seed 0 --device cpu --steps 4000 --out results.json
 
 # LM experiment (needs a GPU + Qwen2.5-1.5B-Instruct in HF cache)
-uv run python experiments/run_phase_b.py \
+uv run jdas run phase-b \
   --model Qwen/Qwen2.5-1.5B-Instruct --layer 17 --method joint \
   --template-id 3 --device cuda --steps 2000 --out results.json
 ```

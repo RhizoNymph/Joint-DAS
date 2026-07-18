@@ -147,8 +147,10 @@ and must not be the only thing evaluated (see metrics).
   `_effective_lambda_gate` helpers + `_post_step` clamp); L_gate term; gates
   included in checkpoints; gate stats + `gate_phase`/`lambda_gate_eff` in history.
 - `src/jdas/eval.py` — live-restricted IIA variant; `gated_k`.
-- `experiments/run_phase_a.py`, `experiments/run_phase_b.py` — `--gates`,
-  `--lambda-gate`, `--gate-lr`, `--gate-init`, gate metrics in result JSON.
+- `src/jdas/cli/runners.py` — the phase-a/phase-b run logic exposing `--gates`,
+  `--lambda-gate`, `--gate-lr`, `--gate-init` (+ schedule flags), gate metrics
+  in the result JSON. Invoked as `jdas run phase-a|phase-b ...`;
+  `experiments/run_phase_a.py` / `run_phase_b.py` are thin shims over it.
 
 ## Implementation notes (deviations from the sketch above)
 
