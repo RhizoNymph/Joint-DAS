@@ -532,6 +532,47 @@ L0 term; it requires controlling the *training schedule*: let variables
 become causally useful first (gate warmup), then apply pruning pressure
 (λ ramp), and keep both saturation regions gradient-alive (clamp log_alpha).
 
+### N3.4 — v3 sweeps (warmup 25% + λ ramp 25% + clamp ±3): one clean success, one diagnostic failure
+
+Same grids, schedule added (`gates_{toy,lm}_v3/`, `gates_v3_summary.md`,
+`docs/assets/night3_gates_v3.png`).
+
+**Success case — boolean_comp l1, seed 2:** the schedule + L0 does exactly
+what the mechanism promises. gated_k prunes 4 → **2** at λ ∈ {0.03, 0.1,
+0.3} while live-IIA stays **1.000/1.000** and the aligned subspace halves
+(126 → 62–63 dims). The dose-response is textbook: λ = 0.3/0.1/0.03 prune at
+step 750/1050/1350; λ = 0.01 starts too late to finish; λ = 0 never prunes.
+This is the first fully-automatic minimal-variable-count discovery in the
+project: no k_max restriction, no hand hypothesis — warmed-up L0 pressure
+found the true 2-variable structure with perfect interchange consistency.
+
+**Toy hier l1/l2: no pruning at any λ.** After warmup all four variables are
+load-bearing (H distributes the computation), and the penalty never beats
+per-variable CF usefulness within the horizon. Seed-dependence is strong in
+both directions (bool seeds 0/1 also don't prune): whether consolidation is
+reachable by SGD depends on the basin the warmup lands in.
+
+**LM: over-pruning to an answer variable, λ-independent (again).** Gates
+slide 4 → 1 at *every* λ including 0 (once 4 → 0 at λ=0.2), right as the
+ramp opens (prune_step ≈ 320). The lone survivor is ~20 dims with
+iia_1_live 0.79–0.84 but recovery ~0.33, and its recovery row agrees
+equally (~0.67) with L and U — the signature of an **output-copy variable**
+(y = L∧U correlates with both), while the best L-detector (agreement 0.83)
+got pruned. iia_2_live is undefined at k=1: the solution cannot express
+composed interventions at all.
+
+**The structural lesson of Night 3.** In joint-DAS the L0-gated CF objective
+is *misaligned with minimality*: closing a gate doesn't just simplify the
+model, it makes the task easier (dead swaps are no-ops whose counterfactual
+is the clean label, and answer-adjacent variables have the easiest CF
+predictions). So gradient pressure prefers few, late-bound,
+answer-flavoured variables — "minimal" in k but causally shallow. The right
+formulation is constrained, not penalized: minimize live variables *subject
+to* live-IIA (on composed swaps, which k=1 cannot game) staying above a
+threshold — e.g. a Lagrangian controller that raises λ only while CF
+performance holds and backs off otherwise. That is the concrete next
+mechanism.
+
 ## 6. Limitations & next steps
 
 **Closed by Night 2:**
@@ -559,10 +600,22 @@ become causally useful first (gate warmup), then apply pruning pressure
   redundant 4-variable solution over that available minimal one (recovery ~0.68–0.72)
   — pruning pressure, not representability, is now the gap.
 
+**Addressed by Night 3 (partially):**
+- **Variable-count pruning has a working mechanism but a misaligned objective.**
+  Hard-concrete gates + the training schedule (gate_lr, warmup, λ ramp, clamp)
+  can discover the exact minimal 2-variable solution automatically (bool l1
+  seed 2: 4→2 at live-IIA 1.0, subspace halved, dose-responsive λ — N3.4).
+  But penalized L0 is structurally misaligned with causal minimality: gate
+  closure makes the CF task easier (no-op swaps, answer-copy shortcuts), so
+  at LM scale it over-prunes to a causally shallow k=1 answer variable at
+  every λ including 0. Three λ-independent gradient-scale pathologies were
+  found and regression-tested along the way (N3.1–N3.3).
+
 **Still open:**
-- **Redundant-variable pruning still weak.** Even the successful capped LM run and
-  the toy seed runs leave overcomplete or ~equal-width variables; sparsity does not
-  drive solutions to dimension-minimal form.
+- **Constrained minimality objective.** The N3.4 lesson: minimize k *subject
+  to* composed-swap live-IIA ≥ threshold (Lagrangian controller that raises λ
+  only while CF performance holds), rather than a fixed penalty. This is the
+  concrete next mechanism for closing the joint-vs-das_true gap.
 - **Single LM / task / site remains.** One model (1.5B), one task (price tagging),
   essentially one layer (17; z-digits and l10 probes are partial). `das_true`
   depth-collapse shown only for hierarchical equality.
@@ -570,9 +623,9 @@ become causally useful first (gate warmup), then apply pruning pressure
 - **Toy N is only 3 layers**; depth sweep is coarse.
 
 Next steps:
-- **Close the joint-vs-das_true gap on the LM**: stronger pruning (higher per-dim λ,
-  width annealing toward zero, or an explicit variable-count penalty) so joint can
-  land on the minimal (L,U)-style solution that das_true proves exists at layer 17.
+- **Constrained gate controller** (see above): adaptive λ driven by a live-IIA
+  constraint on composed swaps, so pruning can never buy loss by making the
+  task degenerate. Then re-run the N3.4 grids.
 - **Report the basis-selection structure** as a first-class result rather than a
   limitation — enumerate the valid bases per site and characterise which the joint
   method prefers.
