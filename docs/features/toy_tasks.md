@@ -79,9 +79,9 @@ accuracy `< target_acc` (default 0.99).
 MLPSite`: caches `state_dict` (`.pt`) + metadata (`.json`) keyed by a sha256 of
 `(task name, n_emb, input_dim, n_labels, seed, hidden, n_layers)`; trains + saves
 on miss, loads on hit; returns an `MLPSite` at `site_layer`. **This exact
-signature is imported by `experiments/run_phase_a.py`.**
+signature is imported by the toy runner (`jdas run toy`).**
 
-## Phase-A science baselines
+## Toy-model science baselines
 
 Three falsification / measurement tools sit on top of the toy tasks. They share
 one library, `src/jdas/hypotheses.py` (importable + unit-tested), which holds:
@@ -91,8 +91,8 @@ load-bearing `classify_solution` (see below).
 
 ### Wrong-composition baseline (`--method das_wrong_and`)
 
-In `experiments/run_phase_a.py`. A **k=2** `FixedCausalModel` using the task's
-TRUE ground-truth variables but a WRONG composition law:
+In the toy runner (`jdas run toy`). A **k=2** `FixedCausalModel` using the
+task's TRUE ground-truth variables but a WRONG composition law:
 
 - `hierarchical_equality`: `label = AND(E1, E2)` (truth: XNOR).
 - `boolean_comp`: `label = XOR(A, x3)` (truth: OR).
@@ -110,7 +110,7 @@ the ceiling ⇒ falsification works; IIA well above the ceiling ⇒ something is
 `hierarchical_equality ≈ 0.75` (AND vs XNOR agree on 3/4 atom combos);
 `boolean_comp ≈ 0.87` (XOR vs OR agree except at `(A,x3)=(1,1)`).
 
-### Discrete search baseline (`experiments/search_baseline.py`)
+### Discrete search baseline (`jdas run search`)
 
 Enumerates all 15 unordered pairs of distinct candidates from the task's
 `hypothesis_library`. For each pair it builds a k=2 `FixedCausalModel` whose
@@ -123,11 +123,11 @@ does brute-force search select `{E1,E2}` (or an equivalent basis), and does its
 best IIA match the gradient-joint ~0.96? CLI: `--task --site-layer --seed
 --steps (default 1500) --device --out`.
 
-### Seed / basis variance study (`experiments/seed_study.py`)
+### Seed / basis variance study (`jdas run seed-study`)
 
-For each seed, trains a joint run exactly as `run_phase_a.py` (same config
+For each seed, trains a joint run exactly as `jdas run toy` (same config
 defaults), then classifies the learned solution WITHOUT retraining. It reuses
-`_per_variable_effect` / task-loading from `experiments/introspect_phase_a.py`:
+`_per_variable_effect` / task-loading from `experiments/introspect_toy.py`:
 live variables = per-variable causal-effect rate `> 2%`; each live var's value
 table over ~4096 fresh inputs is compared to `(E1, E2)` and to the named boolean
 functions; `classify_solution` assigns one of:
@@ -152,10 +152,11 @@ measurement of the study.
 ## Files
 
 - `src/jdas/hypotheses.py` — boolean function table, per-task hypothesis
-  library, and `classify_solution` (Phase-A science tooling).
-- `experiments/run_phase_a.py` — adds `das_wrong_and` + `agreement_ceiling`.
-- `experiments/search_baseline.py` — discrete search baseline.
-- `experiments/seed_study.py` — seed / basis variance study.
+  library, and `classify_solution` (toy-model science tooling).
+- `src/jdas/cli/runners.py` (`jdas run toy`) — adds `das_wrong_and` +
+  `agreement_ceiling`.
+- `src/jdas/cli/runners.py` (`jdas run search`) — discrete search baseline.
+- `src/jdas/cli/runners.py` (`jdas run seed-study`) — seed / basis variance study.
 - `tests/science/test_hypotheses.py`, `tests/science/test_wrong_and_baseline.py`.
 - `src/jdas/tasks/__init__.py` — exports the two task classes.
 - `src/jdas/tasks/hierarchical_equality.py` — `HierarchicalEqualityTask`,

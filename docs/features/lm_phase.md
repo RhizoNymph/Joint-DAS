@@ -12,14 +12,14 @@ recovery is measurable on a real transformer.  Provides:
 - a featurized causal-model wrapper (`FeaturizedCausalModel`) so the learned
   causal model can read decoded `(X, Y, Z)` features rather than raw token ids,
 - a zero-shot screening CLI (`screen_lm.py`) to pick model+template+layer,
-- the Phase B runner (`run_phase_b.py`) mirroring `run_phase_a.py`.
+- the LM runner (`jdas run lm`) mirroring the toy runner (`jdas run toy`).
 
 ## Non-scope
 
 - Phase B reuses the jdas core trainers/eval; the anti-collapse mechanisms
   (`SubspaceLayout.max_width`, `JointConfig.sparse_mode="per_dim"`) and
   `save_checkpoint`/`load_checkpoint` live in the core feature (`jdas_core`) and
-  are documented there — Phase B only wires them through `run_phase_b.py`.
+  are documented there — the LM phase only wires them through `jdas run lm`.
 - No fine-tuning of the LM; weights are frozen throughout.
 - No toy-model code (that is Phase A / `toy_tasks`).
 
@@ -63,7 +63,7 @@ recovery is measurable on a real transformer.  Provides:
    trainable per-variable MLP encoders + decoder on those 3 features. Feature
    extraction is deterministic and non-differentiable (fine: the trainable MLPs
    sit on top).
-5. `run_phase_b.py` wires method → causal model:
+5. `jdas run lm` wires method → causal model:
    - `joint` / `random_rotation`: `FeaturizedCausalModel` (k_max variables),
      `JointTrainer`, then `recovery` + `refit_rotation` (joint only).
    - `das_true`: `FixedCausalModel(task.gt_variables, task.label_from_variables,
@@ -74,7 +74,7 @@ recovery is measurable on a real transformer.  Provides:
    final metrics, and for learned methods recovery_matrix/best_assignment/
    recovery_score + refit_iia_1/2). The config block records all runner flags,
    including the new anti-collapse / position knobs.
-6. Anti-collapse / position flags on `run_phase_b.py`:
+6. Anti-collapse / position flags on `jdas run lm`:
    - `--max-width FLOAT` — hard per-variable width cap (passed to
      `SubspaceLayout(max_width=)`); `--init-width FLOAT` overrides the default
      `d/(2*k_max)` init (clamped below `0.5*max_width` when a cap is set).
@@ -96,7 +96,7 @@ recovery is measurable on a real transformer.  Provides:
   (LearnedCausalModel whose encoders read task features), `HFSiteError`.
 - `experiments/screen_lm.py` — zero-shot screening CLI; writes
   `experiments/results/screen_<model>.json`.
-- `experiments/run_phase_b.py` — Phase B runner CLI.
+- `src/jdas/cli/runners.py` (`jdas run lm`) — the LM runner CLI.
 - `tests/lm/` — CPU-only tests (stub char tokenizer + tiny in-process Qwen2):
   `test_price_tagging.py`, `test_hf_site.py`, `conftest.py`.
 
@@ -133,8 +133,8 @@ export HF_HOME=$HOME/hf-cache
 # screening:
 uv run python experiments/screen_lm.py --model Qwen/Qwen2.5-0.5B-Instruct \
     --templates all --n 300 --device cuda --local-files-only
-# a Phase B run (layer ~60% depth = 14 for 0.5B / 24 layers):
-uv run python experiments/run_phase_b.py --model Qwen/Qwen2.5-0.5B-Instruct \
+# an LM run (layer ~60% depth = 14 for 0.5B / 24 layers):
+uv run jdas run lm --model Qwen/Qwen2.5-0.5B-Instruct \
     --layer 14 --method das_true --template-id <BEST> --device cuda \
     --steps 2000 --batch-size 32 --n-sources 2 --k-max 4 --v 2 \
     --local-files-only --out experiments/results/phase_b/<name>.json

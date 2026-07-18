@@ -45,11 +45,13 @@ work out of the box on this repo.
 ## Command tree
 
 ```
-jdas run phase-a  --task ... --method ... [all current run_phase_a args]
-jdas run phase-b  --layer ... --method ... [all current run_phase_b args]
-jdas run search   [search_baseline args]
-jdas run seed-study [seed_study args]
-jdas analyze gates|phase-a|night2 [existing analyzer args]
+jdas run toy      --task ... --method ... [toy-model alignment run]
+jdas run lm       --layer ... --method ... [HF language-model alignment run]
+jdas run search   [discrete search baseline]
+jdas run seed-study [seed / basis variance study]
+jdas analyze gates                    # night-3 gate sweeps (toy + lm)
+jdas analyze toy   --results-dir ...  # aggregate toy-model / lm result table + plots
+jdas analyze capped-lm|seed-basis|search|falsification   # per-study plots
 jdas sweep run    SPEC.toml [--where local|cluster] [--wait] [--dry-run]
 jdas sweep status SPEC.toml
 jdas sweep collect SPEC.toml          # rsync results back from hosts
@@ -58,6 +60,10 @@ jdas cluster status                   # per host: relevant processes + GPU memor
 jdas cluster exec -- CMD...           # run a command on every host
 jdas cluster kill PATTERN             # pkill -f on every host (bracket-escaped)
 ```
+
+`jdas analyze toy` aggregates a directory of toy-model **or** LM result JSONs
+(schema-tolerant); the four study subcommands each render one figure from the
+committed `experiments/results/night2` study JSONs.
 
 argparse subparsers, no new dependencies. Registered as a console script
 (`[project.scripts] jdas = "jdas.cli:main"`) so `uv run jdas ...` works.
@@ -70,7 +76,7 @@ grids are re-expressed as specs so the committed results stay reproducible:
 ```toml
 [sweep]
 name = "gates_toy_v3"                  # tag; also the default log prefix
-runner = "phase-a"                     # phase-a | phase-b | search | seed-study
+runner = "toy"                         # toy | lm | search | seed-study
 out_dir = "night3/gates_toy_v3"        # under paths.results
 out_pattern = "{task_short}_l{site_layer}_lg{lambda_gate}_s{seed}.json"
 
@@ -123,23 +129,23 @@ Semantics:
 
 - `src/jdas/cli/__init__.py` — `main()`, argparse tree, dispatch.
 - `src/jdas/cli/config.py` — `EnvConfig` dataclass + TOML loader + precedence.
-- `src/jdas/cli/runners.py` — phase-a/phase-b/search/seed-study run logic,
-  moved from `experiments/run_phase_a.py` etc. (argument names unchanged).
+- `src/jdas/cli/runners.py` — toy/lm/search/seed-study run logic (the sole
+  home; argument names unchanged from the original per-experiment scripts).
 - `src/jdas/cli/sweeps.py` — spec model, grid expansion, out-pattern
   rendering, local executor, driver generation.
 - `src/jdas/cli/cluster.py` — sync/status/exec/kill/launch/collect primitives
   used by both `jdas cluster` and the sweep executor.
-- `src/jdas/cli/analyze.py` — analyze subcommand dispatch to the existing
-  analyzer modules.
-- `experiments/run_phase_a.py`, `run_phase_b.py` — thin compat shims calling
-  `jdas.cli.runners` with identical CLI (keeps existing tests and committed
-  result configs meaningful). Other one-off experiment scripts
-  (`search_baseline.py`, `seed_study.py`, `screen_lm.py`,
-  `introspect_phase_a.py`, analyzers) stay importable as modules; their
-  canonical invocation becomes `jdas ...`.
+- `src/jdas/cli/analyze.py` — analyze subcommand dispatch to the analyzer
+  modules (`analyze_gates`, `analyze_toy_lm`, `analyze_studies`).
+- `experiments/analyze_toy_lm.py` — toy-model / LM aggregate table + plots
+  (`jdas analyze toy`). `experiments/analyze_studies.py` — the four study
+  plotters (`jdas analyze capped-lm|seed-basis|search|falsification`).
+  `experiments/analyze_gates.py` — night-3 gate sweeps (`jdas analyze gates`).
+- `experiments/introspect_toy.py`, `screen_lm.py` — one-off diagnostics that
+  stay importable modules (`python experiments/...`), not part of the `jdas`
+  command tree.
 - `experiments/sweeps/*.toml` — night-1/2/3 grids as specs (at minimum:
-  gates_toy_v3, gates_lm_v3, plus the v1/v2 variants and the night-2
-  capped-LM wave).
+  gates_toy_v3, gates_lm_v3, plus the v1/v2 variants and `capped_lm.toml`).
 - `jdas.toml` — this environment's config. `jdas.local.toml` gitignored.
 - DELETED: every file in `scripts/` (sync_nodes.sh, launch_*.sh,
   rerun_baselines.sh, sweep_gates_toy.sh, gates_*_node*.sh, gates_v*_node*.sh).

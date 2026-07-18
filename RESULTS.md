@@ -96,10 +96,11 @@ Pointers:
   `eval.py`.
 - Tasks: `src/jdas/tasks/{hierarchical_equality,boolean_comp,price_tagging}.py`.
 - LM site: `src/jdas/models/hf.py` (`HFSite`, `FeaturizedCausalModel`).
-- Entry points: `experiments/{run_phase_a,run_phase_b,screen_lm,introspect_phase_a,analyze}.py`.
+- Entry points: `jdas run toy|lm|search|seed-study` (logic in `src/jdas/cli/runners.py`);
+  `experiments/{screen_lm,introspect_toy}.py` diagnostics; `jdas analyze ...` for aggregation.
 - Docs: `docs/DESIGN.md`, `docs/OVERVIEW.md`, `docs/features/*.md`.
 
-## 3. Phase A results (toy models, known ground truth)
+## 3. Toy-model results (known ground truth) (formerly Phase A)
 
 48 runs = 2 tasks × 4 methods × site layers × 3 seeds. N is a 3-hidden-layer,
 width-256 ReLU MLP trained to >99% accuracy; the site is a post-ReLU hidden block
@@ -182,7 +183,7 @@ does real work in the `joint` runs (effective_k 2–3).
 
 ### Introspection — what seed 0 actually learned
 
-A retrained seed-0 layer-1 joint model (`experiments/introspect_phase_a.py`,
+A retrained seed-0 layer-1 joint model (`experiments/introspect_toy.py`,
 `experiments/results/introspect_hier_l1_s0.{json,md}`) reproduces the run:
 iia_1 0.977, iia_2 0.980, effective_k 2, recovery 0.797, hard widths [31, 30, 31, 30].
 Only Z2 (effect 0.309) and Z3 (effect 0.317) are causally live; Z0/Z1 are dead
@@ -207,7 +208,7 @@ claim: **joint DAS finds a valid two-variable factorisation at deep layers where
 hand-specified GT model fails; whether it coincides with the literal atoms is
 seed-dependent (2/3 yes, 1/3 an alternative basis).**
 
-## 4. Phase B results (Qwen2.5-1.5B-Instruct, price tagging)
+## 4. LM results (Qwen2.5-1.5B-Instruct, price tagging) (formerly Phase B)
 
 **Screening.** Qwen2.5-0.5B-Instruct was degenerate on the task (near-constant
 answering). Qwen2.5-1.5B-Instruct reaches ~81% zero-shot accuracy with template 3,
@@ -637,26 +638,24 @@ Next steps:
 All commands from repo root. Everything runs through the unified `jdas` CLI
 (`uv run jdas ...`); environment specifics (hosts, remote paths, uv location,
 HF env vars, default model) live in `jdas.toml` (see docs/features/unified-cli.md).
-Legacy `python experiments/run_phase_{a,b}.py ...` still works as a thin shim
-with identical flags.
 
-A single Phase A run:
+A single toy-model run (formerly `run phase-a`):
 
 ```
-uv run jdas run phase-a --task hierarchical_equality \
+uv run jdas run toy --task hierarchical_equality \
     --method joint --site-layer 1 --seed 0 --device cuda --steps 4000 \
     --k-max 4 --v 2 --out experiments/results/phase_a/hierarchical_equality_joint_l1_s0.json
 ```
 
-The Phase A grid (4-method × 3-layer × 3-seed per task) and the baselines-only
+The toy-model grid (4-method × 3-layer × 3-seed per task) and the baselines-only
 rerun were driven by `scripts/launch_phase_a.sh` / `rerun_baselines.sh`; run the
-individual `jdas run phase-a` configs directly, or on the cluster deal them
+individual `jdas run toy` configs directly, or on the cluster deal them
 round-robin with a sweep spec (see `experiments/sweeps/`).
 
-Phase A analysis + plots (writes the summary md and `docs/assets/*.png`):
+Toy-model / LM analysis + plots (writes the summary md and `docs/assets/*.png`):
 
 ```
-uv run jdas analyze phase-a \
+uv run jdas analyze toy \
     --results-dir experiments/results/phase_a \
     --out-md experiments/results/phase_a_summary.md \
     --assets-dir docs/assets --tag phase_a
@@ -665,7 +664,7 @@ uv run jdas analyze phase-a \
 Seed-0 introspection (retrain + variable-hypothesis agreement) stays a module:
 
 ```
-uv run python experiments/introspect_phase_a.py --task hierarchical_equality \
+uv run python experiments/introspect_toy.py --task hierarchical_equality \
     --site-layer 1 --seed 0 --steps 4000 --device cpu --tag hier_l1_s0 \
     --out-dir experiments/results
 ```
@@ -679,7 +678,7 @@ uv run jdas run search --task hierarchical_equality --site-layer 1 --device cuda
     --out experiments/results/search_hier_l1.json
 ```
 
-Phase B (node1; the HF env vars are exported by the cluster driver from
+LM runs (node1; the HF env vars are exported by the cluster driver from
 `[cluster.env]`, or `export HF_HOME=$HOME/hf-cache` locally). Screening stays a
 module; a run:
 
@@ -687,12 +686,12 @@ module; a run:
 uv run python experiments/screen_lm.py --model Qwen/Qwen2.5-1.5B-Instruct \
     --templates all --n 300 --device cuda --local-files-only
 
-uv run jdas run phase-b --model Qwen/Qwen2.5-1.5B-Instruct \
+uv run jdas run lm --model Qwen/Qwen2.5-1.5B-Instruct \
     --layer 17 --method das_true --template-id 3 --device cuda \
     --steps 2000 --batch-size 32 --n-sources 2 --k-max 4 --v 2 \
     --local-files-only --out experiments/results/phase_b/pt_das_true_l17_s0.json
 # joint adds a freeze-and-refit pass; --no-refit skips it (halves runtime):
-uv run jdas run phase-b --model Qwen/Qwen2.5-1.5B-Instruct \
+uv run jdas run lm --model Qwen/Qwen2.5-1.5B-Instruct \
     --layer 17 --method joint --template-id 3 --device cuda --steps 2000 \
     --batch-size 32 --n-sources 2 --k-max 4 --v 2 --local-files-only \
     --out experiments/results/phase_b/pt_joint_l17_s0.json
@@ -720,7 +719,7 @@ Old driver → sweep spec map:
 | `scripts/launch_gates_lm.sh`, `gates_lm_node{0,1,2}.sh` | `gates_lm_v1.toml` |
 | `scripts/gates_v2_node{0,1,2}.sh` (toy / lm halves) | `gates_toy_v2.toml` / `gates_lm_v2.toml` |
 | `scripts/gates_v3_node{0,1,2}.sh` (toy / lm halves) | `gates_toy_v3.toml` / `gates_lm_v3.toml` |
-| night-2 capped-LM wave (N2.2, hand-run) | `night2_capped_lm.toml` |
+| night-2 capped-LM wave (N2.2, hand-run) | `capped_lm.toml` |
 
 The night-3 gate-sweep summary (tables + figure):
 
@@ -738,7 +737,7 @@ uv run jdas analyze gates \
 uv run jdas cluster sync              # rsync repo + uv sync on every host
 uv run jdas cluster status            # per host: jdas procs + GPU memory
 uv run jdas cluster exec -- nvidia-smi -L
-uv run jdas cluster kill run_phase    # pkill -f (pattern bracket-escaped)
+uv run jdas cluster kill 'jdas run'   # pkill -f (pattern bracket-escaped)
 ```
 
 Tests: `uv run pytest -q` (233 tests).

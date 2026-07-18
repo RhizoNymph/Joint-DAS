@@ -33,12 +33,12 @@ uv sync
 uv run pytest tests -q
 
 # Toy experiment (CPU works; CUDA faster)
-uv run jdas run phase-a \
+uv run jdas run toy \
   --task hierarchical_equality --method joint --site-layer 1 \
   --seed 0 --device cpu --steps 4000 --out results.json
 
 # LM experiment (needs a GPU + Qwen2.5-1.5B-Instruct in HF cache)
-uv run jdas run phase-b \
+uv run jdas run lm \
   --model Qwen/Qwen2.5-1.5B-Instruct --layer 17 --method joint \
   --template-id 3 --device cuda --steps 2000 --out results.json
 ```

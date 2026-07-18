@@ -17,7 +17,7 @@ method in `docs/DESIGN.md`.
   DAS, `H` fixed), `refit_rotation` (freeze-and-refit protocol), random-rotation
   control.
 - Eval: IIA per swap size, recovery matrix vs. ground truth, effective-k.
-- Phase A CLI entry point (`experiments/run_phase_a.py`).
+- Toy-model CLI entry point (`jdas run toy`).
 
 ## Non-scope
 
@@ -101,9 +101,9 @@ method in `docs/DESIGN.md`.
 - `src/jdas/eval.py` — `iia`, `recovery` (+ `RecoveryResult`), `effective_k`.
   Exception: `EvalError`.
 - `src/jdas/__init__.py` — public re-exports.
-- `experiments/run_phase_a.py` — argparse CLI; lazy-imports tasks/models
-  (`jdas.tasks.*`, `jdas.models.toy.load_or_train_toy_model`); writes results
-  JSON (config + history + final metrics + recovery + refit IIA).
+- `src/jdas/cli/runners.py` (`jdas run toy`) — argparse CLI; lazy-imports
+  tasks/models (`jdas.tasks.*`, `jdas.models.toy.load_or_train_toy_model`);
+  writes results JSON (config + history + final metrics + recovery + refit IIA).
 - `tests/core/` — `fakes.py` (inline `XorTask`, `MLPSite`, `IdentitySite`,
   `RiggedSite`), `test_rotation.py`, `test_causal_model.py`,
   `test_intervention.py`, `test_eval.py`, `test_training.py`.

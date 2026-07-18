@@ -48,7 +48,7 @@ gate parameters live on a very different scale from `Q`/boundaries/`H`.
   enough. This is *not* gradient death (contrast the Night-2 width clamp); it is
   an optimizer-step-size limit.
 - **Two knobs** (`JointConfig`, both threaded from `--gate-lr`/`--gate-init` in
-  `run_phase_a.py`/`run_phase_b.py` and recorded in the result JSON + checkpoint
+  `jdas run toy`/`jdas run lm` and recorded in the result JSON + checkpoint
   meta):
   - `gate_lr: float | None = None` — a dedicated learning rate for the gate
     param group (`None` falls back to `config.lr`). The trainer puts gate
@@ -85,7 +85,7 @@ The fix is not a bigger `λ` — it is controlling the schedule so variables
 become causally useful *first*, then applying pruning pressure gently, and
 keeping both saturation regions gradient-alive. Three `JointConfig` knobs (all
 threaded from `--gate-warmup`/`--gate-lambda-ramp`/`--gate-clamp` in
-`run_phase_a.py`/`run_phase_b.py`, recorded in checkpoint gate meta, and echoed
+`jdas run toy`/`jdas run lm`, recorded in checkpoint gate meta, and echoed
 per-eval in history as `gate_phase` + `lambda_gate_eff`):
 
 - `gate_warmup_steps: int = 0` — while `step < gate_warmup_steps`, training is
@@ -147,10 +147,9 @@ and must not be the only thing evaluated (see metrics).
   `_effective_lambda_gate` helpers + `_post_step` clamp); L_gate term; gates
   included in checkpoints; gate stats + `gate_phase`/`lambda_gate_eff` in history.
 - `src/jdas/eval.py` — live-restricted IIA variant; `gated_k`.
-- `src/jdas/cli/runners.py` — the phase-a/phase-b run logic exposing `--gates`,
+- `src/jdas/cli/runners.py` — the toy/lm run logic exposing `--gates`,
   `--lambda-gate`, `--gate-lr`, `--gate-init` (+ schedule flags), gate metrics
-  in the result JSON. Invoked as `jdas run phase-a|phase-b ...`;
-  `experiments/run_phase_a.py` / `run_phase_b.py` are thin shims over it.
+  in the result JSON. Invoked as `jdas run toy|lm ...` (the sole interface).
 
 ## Implementation notes (deviations from the sketch above)
 
