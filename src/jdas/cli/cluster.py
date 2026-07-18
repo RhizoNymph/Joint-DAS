@@ -105,11 +105,11 @@ def status_cmd(cfg: EnvConfig) -> str:
     """Remote shell command reporting jdas processes + GPU memory on a host."""
     env = cfg.cluster.env_exports()
     prefix = f"{env}; " if env else ""
-    # bracket-escape 'jdas'/'run_phase' so pgrep doesn't match itself
+    # bracket-escape 'jdas run' so pgrep doesn't match itself
     return (
         f"{prefix}"
         "echo '== procs =='; "
-        "pgrep -af '[r]un_phase|[j]das run' || echo '(none)'; "
+        "pgrep -af '[j]das run' || echo '(none)'; "
         "echo '== gpu =='; "
         "nvidia-smi --query-gpu=memory.used,memory.total "
         "--format=csv,noheader 2>/dev/null || echo '(no nvidia-smi)'"

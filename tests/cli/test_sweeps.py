@@ -27,7 +27,7 @@ def _toy_spec_dict() -> dict:
     return {
         "sweep": {
             "name": "t",
-            "runner": "phase-a",
+            "runner": "toy",
             "out_dir": "night3/gates_toy_v3",
             "out_pattern": "{task_short}_l{site_layer}_lg{lambda_gate}_s{seed}.json",
         },
@@ -132,7 +132,7 @@ def test_run_argv_flags_and_bools():
     spec = spec_from_dict(_toy_spec_dict())
     run = expand(spec)[0]
     argv = run_argv(spec, run, "out.json")
-    assert argv[:2] == ["run", "phase-a"]
+    assert argv[:2] == ["run", "toy"]
     assert "--gates" in argv  # bare bool flag
     # value flag rendered as --flag value
     i = argv.index("--site-layer")
@@ -144,7 +144,7 @@ def test_run_argv_flags_and_bools():
 def test_run_argv_drops_false_and_none():
     spec = spec_from_dict(
         {
-            "sweep": {"name": "t", "runner": "phase-b", "out_dir": "d", "out_pattern": "x.json"},
+            "sweep": {"name": "t", "runner": "lm", "out_dir": "d", "out_pattern": "x.json"},
             "grid": {},
             "fixed": {"gates": False, "gate_lr": None, "layer": 17},
         }
@@ -187,7 +187,7 @@ def test_render_driver_content():
     assert "cd $HOME/Code/ai/learning-causal-representations" in driver
     assert "export HF_HOME=$HOME/hf-cache HF_HUB_DISABLE_XET=1 HF_HUB_OFFLINE=1" in driver
     # uv path from config.
-    assert "~/.local/bin/uv run jdas run phase-a" in driver
+    assert "~/.local/bin/uv run jdas run toy" in driver
     # skip-existing guard + failure + status lines.
     assert "[ -f " in driver
     assert "gates_toy_v3_failures.log" not in driver  # uses spec.name 't'
@@ -253,8 +253,8 @@ def test_committed_gates_v2_has_gate_lr_no_schedule():
     assert "gate_warmup" not in runs[0].args
 
 
-def test_committed_night2_capped_lm():
-    spec = load_spec(_SPEC_DIR / "night2_capped_lm.toml")
+def test_committed_capped_lm():
+    spec = load_spec(_SPEC_DIR / "capped_lm.toml")
     runs = expand(spec)
     assert len(runs) == 3
     methods = {r.args["method"] for r in runs}

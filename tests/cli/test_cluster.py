@@ -75,7 +75,6 @@ def test_uv_sync_uses_config_paths():
 def test_status_cmd_bracket_escapes_and_exports_env():
     cmd = status_cmd(_cfg())
     assert "export HF_HOME=$HOME/hf-cache" in cmd
-    assert "[r]un_phase" in cmd
     assert "[j]das run" in cmd
     assert "nvidia-smi" in cmd
 
@@ -84,14 +83,14 @@ def test_status_cmd_bracket_escapes_and_exports_env():
 
 
 def test_bracket_escape():
-    assert bracket_escape("run_phase_b.py") == "[r]un_phase_b.py"
+    assert bracket_escape("jdas run lm") == "[j]das run lm"
     assert bracket_escape("jdas") == "[j]das"
     assert bracket_escape("") == ""
 
 
 def test_kill_cmd_escaped():
-    cmd = kill_cmd("run_phase_b")
-    assert "[r]un_phase_b" in cmd
+    cmd = kill_cmd("jdas run lm")
+    assert "[j]das run lm" in cmd
     assert cmd.startswith("pkill -f ")
     # The literal unescaped pattern must not appear (so pkill can't self-match).
-    assert "'run_phase_b'" not in cmd
+    assert "'jdas run lm'" not in cmd

@@ -5,7 +5,7 @@
 
 [sweep]
 name = "gates_toy_v3"
-runner = "phase-a"
+runner = "toy"
 out_dir = "night3/gates_toy_v3"
 out_pattern = "{task_short}_l{site_layer}_lg{lambda_gate}_s{seed}.json"
 

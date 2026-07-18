@@ -2,8 +2,9 @@
 
 Command tree (see docs/features/unified-cli.md):
 
-    jdas run   phase-a | phase-b | search | seed-study   [runner args]
-    jdas analyze gates | phase-a | night2                [analyzer args]
+    jdas run   toy | lm | search | seed-study            [runner args]
+    jdas analyze gates | toy | capped-lm | seed-basis | search | falsification
+                                                         [analyzer args]
     jdas sweep run    SPEC.toml [--where local|cluster] [--wait] [--dry-run] [--parallel N]
     jdas sweep status SPEC.toml
     jdas sweep collect SPEC.toml
@@ -49,8 +50,8 @@ def _build_run_group(sub) -> None:
     run = sub.add_parser("run", help="single experiment run")
     run_sub = run.add_subparsers(dest="runner", required=True)
     # Reuse each runner's own parser as the subcommand parser.
-    _add_child(run_sub, "phase-a", runners.build_phase_a_parser, runners.run_phase_a)
-    _add_child(run_sub, "phase-b", runners.build_phase_b_parser, runners.run_phase_b)
+    _add_child(run_sub, "toy", runners.build_toy_parser, runners.run_toy)
+    _add_child(run_sub, "lm", runners.build_lm_parser, runners.run_lm)
     _add_child(run_sub, "search", runners.build_search_parser, runners.run_search)
     _add_child(run_sub, "seed-study", runners.build_seed_study_parser, runners.run_seed_study)
 
@@ -68,8 +69,12 @@ def _build_analyze_group(sub) -> None:
     an = sub.add_parser("analyze", help="aggregate result JSONs into tables/plots")
     an_sub = an.add_subparsers(dest="analyzer", required=True)
     _add_analyze(an_sub, "gates", analyze.build_gates_parser, analyze.run_gates)
-    _add_analyze(an_sub, "phase-a", analyze.build_phase_a_analyze_parser, analyze.run_phase_a_analyze)
-    _add_analyze(an_sub, "night2", analyze.build_night2_parser, analyze.run_night2)
+    _add_analyze(an_sub, "toy", analyze.build_toy_analyze_parser, analyze.run_toy_analyze)
+    # The four night-2 studies, split into descriptive subcommands.
+    _add_analyze(an_sub, "capped-lm", analyze.build_studies_parser, analyze.run_capped_lm)
+    _add_analyze(an_sub, "seed-basis", analyze.build_studies_parser, analyze.run_seed_basis)
+    _add_analyze(an_sub, "search", analyze.build_studies_parser, analyze.run_search_ranking)
+    _add_analyze(an_sub, "falsification", analyze.build_studies_parser, analyze.run_falsification)
 
 
 def _add_analyze(sub, name: str, build, run_fn) -> None:
@@ -258,14 +263,14 @@ def _dispatch_analyze(args: argparse.Namespace, argv: list[str] | None) -> int:
             args, [("--toy-dir", "toy_dir"), ("--lm-dir", "lm_dir"),
                    ("--out-md", "out_md"), ("--plot", "plot")]
         )
-    elif name == "phase-a":
+    elif name == "toy":
         passthru = _rebuild_argv(
             args, [("--results-dir", "results_dir"), ("--out-md", "out_md"),
                    ("--assets-dir", "assets_dir"), ("--tag", "tag")]
         )
-    else:  # night2
+    else:  # capped-lm | seed-basis | search | falsification (the study plotters)
         passthru = _rebuild_argv(
-            args, [("--night2-dir", "night2_dir"), ("--assets-dir", "assets_dir")]
+            args, [("--studies-dir", "studies_dir"), ("--assets-dir", "assets_dir")]
         )
     fn(passthru)
     return 0

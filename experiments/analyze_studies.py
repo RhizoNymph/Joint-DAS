@@ -1,20 +1,25 @@
-"""Night-2 analysis plots for Joint-DAS.
+"""Study plots for Joint-DAS (capped-LM, seed-basis, search, falsification).
 
-Emits four PNGs (dpi 150, matplotlib Agg, no seaborn) into an assets dir:
+Each of the four functions renders one self-contained study PNG (dpi 150,
+matplotlib Agg, no seaborn) into an assets dir and covers a distinct study:
 
-- ``night2_capped_lm.png``     capped-LM bar comparison (joint vs control
+- ``night2_capped_lm.png``     capped-LM method comparison (joint vs control
                                [vs das_true when present]), iia_1 + iia_2, k_eff
                                annotated.
-- ``night2_seed_basis.png``    which boolean functions the live variables realise
-                               across the 10 seeds (basis-composition histogram).
-- ``night2_search_hier.png``   hier-eq search ranking (horizontal bars, E1+E2
+- ``night2_seed_basis.png``    seed-basis study: which boolean functions the live
+                               variables realise across the 10 seeds.
+- ``night2_search_hier.png``   brute-force search ranking (horizontal bars, E1+E2
                                highlighted last).
-- ``night2_wrong_and.png``     wrong-composition measured iia vs analytic ceiling.
+- ``night2_wrong_and.png``     wrong-composition falsification: measured iia vs
+                               analytic ceiling.
 
-Reads the fixed night-2 result JSONs; run from repo root:
+Exposed through descriptive subcommands (``jdas analyze
+capped-lm|seed-basis|search|falsification``); the committed result JSONs live
+under ``experiments/results/night2`` (the historical data directory).  Run all
+four at once from repo root:
 
-    uv run python experiments/analyze_night2.py \
-        --night2-dir experiments/results/night2 \
+    uv run python experiments/analyze_studies.py \
+        --studies-dir experiments/results/night2 \
         --assets-dir docs/assets
 """
 
@@ -218,12 +223,49 @@ def plot_wrong_and(night2: Path, assets: Path) -> Path:
     return out
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(description="Night-2 Joint-DAS plots")
-    p.add_argument("--night2-dir", default="experiments/results/night2")
+# -- per-study entry points (one descriptive subcommand each) -----------------
+
+
+def _study_args() -> tuple[Path, Path]:
+    p = argparse.ArgumentParser(description="Joint-DAS study plot")
+    p.add_argument("--studies-dir", default="experiments/results/night2")
     p.add_argument("--assets-dir", default="docs/assets")
     args = p.parse_args()
-    night2 = Path(args.night2_dir)
+    assets = Path(args.assets_dir)
+    assets.mkdir(parents=True, exist_ok=True)
+    return Path(args.studies_dir), assets
+
+
+def capped_lm() -> None:
+    """``jdas analyze capped-lm``: capped-LM method comparison bars."""
+    studies, assets = _study_args()
+    print(f"wrote {plot_capped_lm(studies, assets)}")
+
+
+def seed_basis() -> None:
+    """``jdas analyze seed-basis``: basis-composition histogram over seeds."""
+    studies, assets = _study_args()
+    print(f"wrote {plot_seed_basis(studies, assets)}")
+
+
+def search_ranking() -> None:
+    """``jdas analyze search``: brute-force search ranking bars."""
+    studies, assets = _study_args()
+    print(f"wrote {plot_search_hier(studies, assets)}")
+
+
+def falsification() -> None:
+    """``jdas analyze falsification``: wrong-composition measured vs ceiling."""
+    studies, assets = _study_args()
+    print(f"wrote {plot_wrong_and(studies, assets)}")
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description="Joint-DAS study plots")
+    p.add_argument("--studies-dir", default="experiments/results/night2")
+    p.add_argument("--assets-dir", default="docs/assets")
+    args = p.parse_args()
+    night2 = Path(args.studies_dir)
     assets = Path(args.assets_dir)
     assets.mkdir(parents=True, exist_ok=True)
 

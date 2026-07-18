@@ -1,7 +1,7 @@
-"""Aggregate Phase A / Phase B result JSONs into a summary table and plots.
+"""Aggregate toy-model / LM result JSONs into a summary table and plots.
 
-Reads a directory of result JSONs (as written by ``run_phase_a.py`` /
-``run_phase_b.py``), groups by ``(task, method, layer)``, and emits:
+Reads a directory of result JSONs (as written by ``jdas run toy`` / ``jdas run
+lm``), groups by ``(task, method, layer)``, and emits:
 
 - (a) a markdown summary table of mean +/- std over seeds for iia_1, iia_2,
   effective_k, recovery_score, refit_iia_1, refit_iia_2 (written to a ``.md``
@@ -14,15 +14,15 @@ Reads a directory of result JSONs (as written by ``run_phase_a.py`` /
 
 Schema tolerance
 ----------------
-Phase A configs use ``site_layer``; Phase B configs use ``layer`` (plus
+Toy-model configs use ``site_layer``; LM configs use ``layer`` (plus
 ``model``/``template_id``). Both are handled: the "layer" key is resolved from
 whichever of ``site_layer``/``layer`` is present. The result schema is otherwise
 identical (``config``, ``final.{iia_1,iia_2,effective_k,hard_widths}``, optional
 ``recovery_score``/``refit_iia_1``/``refit_iia_2``, ``history``).
 
-Usage
+Usage (via the CLI: ``jdas analyze toy --results-dir ... --out-md ...``)
 -----
-    uv run python experiments/analyze.py \
+    uv run python experiments/analyze_toy_lm.py \
         --results-dir experiments/results/phase_a \
         --out-md experiments/results/phase_a_summary.md \
         --assets-dir docs/assets --tag phase_a
@@ -55,7 +55,7 @@ def _plt():
 
 
 def _resolve_layer(cfg: dict) -> int:
-    """Resolve the intervention-site layer index across Phase A/B schemas."""
+    """Resolve the intervention-site layer index across toy/LM schemas."""
     if "site_layer" in cfg:
         return int(cfg["site_layer"])
     if "layer" in cfg:
@@ -326,7 +326,7 @@ def plot_training_curve(
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Aggregate Phase A/B results")
+    p = argparse.ArgumentParser(description="Aggregate toy-model / LM results")
     p.add_argument("--results-dir", required=True)
     p.add_argument("--out-md", required=True)
     p.add_argument("--assets-dir", default="docs/assets")

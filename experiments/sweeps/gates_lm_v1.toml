@@ -6,7 +6,7 @@
 
 [sweep]
 name = "gates_lm_v1"
-runner = "phase-b"
+runner = "lm"
 out_dir = "night3/gates_lm"
 out_pattern = "pt_gates_l17_lg{lambda_gate}_s{seed}.json"
 

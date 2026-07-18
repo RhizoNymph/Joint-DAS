@@ -1,14 +1,14 @@
-"""Boolean hypothesis library and learned-solution classifier (Phase A science).
+"""Boolean hypothesis library and learned-solution classifier (toy-model science).
 
-This module provides the *measurement* tooling shared by three Phase-A
+This module provides the *measurement* tooling shared by three toy-model
 experiments:
 
-- the wrong-composition falsification baseline (``experiments/run_phase_a.py``,
-  method ``das_wrong_and``),
-- the discrete search baseline (``experiments/search_baseline.py``),
-- the seed/basis variance study (``experiments/seed_study.py``).
+- the wrong-composition falsification baseline (``jdas run toy``, method
+  ``das_wrong_and``),
+- the discrete search baseline (``jdas run search``),
+- the seed/basis variance study (``jdas run seed-study``).
 
-Everything here operates on the two ground-truth boolean atoms of a Phase-A
+Everything here operates on the two ground-truth boolean atoms of a toy-model
 task.  For both tasks ``k_gt == 2`` and the atoms are called ``(V0, V1)``:
 
 - ``hierarchical_equality``: ``V0 = E1 = (a == b)``, ``V1 = E2 = (c == d)``.

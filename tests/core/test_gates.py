@@ -439,12 +439,11 @@ def test_checkpoint_mismatch_gate_into_nogate(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_run_phase_a_cli_accepts_gate_flags() -> None:
-    """run_phase_a's parser accepts --gates and --lambda-gate."""
-    import importlib
+def test_run_toy_cli_accepts_gate_flags() -> None:
+    """run_toy's parser accepts --gates and --lambda-gate."""
+    from jdas.cli import runners
 
-    mod = importlib.import_module("experiments.run_phase_a")
-    parser = mod._build_parser()
+    parser = runners.build_toy_parser()
     args = parser.parse_args(
         ["--task", "hierarchical_equality", "--method", "joint",
          "--gates", "--lambda-gate", "0.1"]
@@ -453,10 +452,9 @@ def test_run_phase_a_cli_accepts_gate_flags() -> None:
     assert args.lambda_gate == pytest.approx(0.1)
 
 
-def test_run_phase_a_gates_rejected_for_fixed_h() -> None:
+def test_run_toy_gates_rejected_for_fixed_h() -> None:
     """--gates with a fixed-H method is rejected."""
-    import importlib
+    from jdas.cli import runners
 
-    mod = importlib.import_module("experiments.run_phase_a")
     with pytest.raises(SystemExit):
-        mod._validate_gate_method("das_true", gates=True)
+        runners._validate_gate_method("das_true", gates=True)

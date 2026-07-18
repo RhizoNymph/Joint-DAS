@@ -1,10 +1,15 @@
 """Single-run experiment logic for the ``jdas run`` subcommands.
 
-Moved verbatim from the ``experiments/run_phase_a.py`` / ``run_phase_b.py`` /
-``search_baseline.py`` / ``seed_study.py`` scripts so there is one home for the
-run logic.  Argument names and semantics are unchanged: the thin
-``experiments/*`` shims re-export these builders/functions, and the committed
-result ``config`` blocks (which serialize ``vars(args)``) stay meaningful.
+The sole home for the four single-run experiments:
+
+- ``jdas run toy``        -- one alignment run on a toy MLP with known GT.
+- ``jdas run lm``         -- the same on a frozen HF language model.
+- ``jdas run search``     -- discrete brute-force search baseline (toy).
+- ``jdas run seed-study`` -- seed / basis variance study (toy).
+
+Argument names and semantics are unchanged from the original per-experiment
+scripts, so the committed result ``config`` blocks (which serialize
+``vars(args)``) stay meaningful.
 
 Each ``build_*_parser`` returns an argparse parser with ``prog`` overridable so
 it slots under the ``jdas run <sub>`` command tree without changing flags, and
@@ -47,11 +52,11 @@ def _validate_gate_method(method: str, gates: bool) -> None:
 
 
 # ===========================================================================
-# Phase A
+# Toy model (MLP, known ground truth)
 # ===========================================================================
 
 
-def _load_task_a(name: str):
+def _load_task_toy(name: str):
     """Lazily import and construct a task by short name."""
     match name:
         case "hierarchical_equality":
@@ -66,7 +71,7 @@ def _load_task_a(name: str):
             raise SystemExit(f"unknown task {name!r}")
 
 
-def _load_site_a(task, site_layer: int, device: str):
+def _load_site_toy(task, site_layer: int, device: str):
     """Lazily import the toy-model loader and build an intervention site."""
     from jdas.models.toy import load_or_train_toy_model
 
@@ -75,7 +80,7 @@ def _load_site_a(task, site_layer: int, device: str):
     )
 
 
-def _build_config_a(args: argparse.Namespace) -> JointConfig:
+def _build_config_toy(args: argparse.Namespace) -> JointConfig:
     return JointConfig(
         steps=args.steps,
         batch_size=args.batch_size,
@@ -95,8 +100,8 @@ def _build_config_a(args: argparse.Namespace) -> JointConfig:
     )
 
 
-def build_phase_a_parser(prog: str | None = None) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog, description="Joint-DAS Phase A runner")
+def build_toy_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog, description="Joint-DAS toy-model runner")
     parser.add_argument(
         "--task",
         choices=["hierarchical_equality", "boolean_comp"],
@@ -161,13 +166,13 @@ def build_phase_a_parser(prog: str | None = None) -> argparse.ArgumentParser:
     return parser
 
 
-def run_phase_a(args: argparse.Namespace) -> None:
+def run_toy(args: argparse.Namespace) -> None:
     _validate_gate_method(args.method, args.gates)
 
     torch.manual_seed(args.seed)
-    task = _load_task_a(args.task)
-    site = _load_site_a(task, args.site_layer, args.device)
-    config = _build_config_a(args)
+    task = _load_task_toy(args.task)
+    site = _load_site_toy(task, args.site_layer, args.device)
+    config = _build_config_toy(args)
 
     d = site.d
     input_dim = _infer_input_dim(task, args)
@@ -197,23 +202,23 @@ def run_phase_a(args: argparse.Namespace) -> None:
                 result["refit_iia_1"] = refit["refit_iia_1"]
                 result["refit_iia_2"] = refit["refit_iia_2"]
         case "das_true":
-            causal_model = _true_fixed_model(task, args)
+            causal_model = _true_fixed_model_toy(task, args)
             layout = _make_layout(d, causal_model.k_max)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
         case "das_wrong":
-            causal_model = _wrong_fixed_model(task, args)
+            causal_model = _wrong_fixed_model_toy(task, args)
             layout = _make_layout(d, causal_model.k_max)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
         case "das_wrong_and":
-            causal_model = _wrong_and_fixed_model(task, args)
+            causal_model = _wrong_and_fixed_model_toy(task, args)
             layout = _make_layout(d, causal_model.k_max)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
             # The analytic agreement ceiling: the IIA a *perfect* das run with
             # this wrong law would approach if N is faithful to the true law.
-            ceiling = _wrong_and_agreement_ceiling(task, args)
+            ceiling = _wrong_and_agreement_ceiling_toy(task, args)
             result["agreement_ceiling"] = ceiling
         case _:
             raise SystemExit(f"unknown method {args.method!r}")
@@ -249,7 +254,7 @@ def _add_recovery(result: dict, causal_model, task, config: JointConfig, gates=N
         result["recovery_score"] = rec.best_score
 
 
-def _true_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
+def _true_fixed_model_toy(task, args: argparse.Namespace) -> FixedCausalModel:
     """FixedCausalModel using the task's ground-truth variables + label rule."""
     label_fn = getattr(task, "label_from_variables", None) or getattr(
         task, "gt_label_fn", None
@@ -265,7 +270,7 @@ def _true_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
     )
 
 
-def _wrong_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
+def _wrong_fixed_model_toy(task, args: argparse.Namespace) -> FixedCausalModel:
     """Deliberately wrong H: a single output-copy variable (Z = y)."""
 
     def gt_vars(inputs: torch.Tensor) -> torch.Tensor:
@@ -307,7 +312,7 @@ def _wrong_law_label_fn(task_name: str):
             raise SystemExit(f"no wrong-and law for task {task_name!r}")
 
 
-def _wrong_and_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
+def _wrong_and_fixed_model_toy(task, args: argparse.Namespace) -> FixedCausalModel:
     """k=2 FixedCausalModel: TRUE GT variables, WRONG composition law."""
     return FixedCausalModel(
         gt_variables_fn=task.gt_variables,
@@ -318,7 +323,7 @@ def _wrong_and_fixed_model(task, args: argparse.Namespace) -> FixedCausalModel:
     )
 
 
-def _wrong_and_agreement_ceiling(
+def _wrong_and_agreement_ceiling_toy(
     task, args: argparse.Namespace, n_samples: int = 20_000
 ) -> dict:
     """Analytic agreement ceiling of the wrong-law model vs the true law.
@@ -369,11 +374,11 @@ def _fixed_swap_assignment(
 
 
 # ===========================================================================
-# Phase B
+# Language model (HF causal LM)
 # ===========================================================================
 
 
-def _build_config_b(args: argparse.Namespace) -> JointConfig:
+def _build_config_lm(args: argparse.Namespace) -> JointConfig:
     return JointConfig(
         steps=args.steps,
         batch_size=args.batch_size,
@@ -395,7 +400,7 @@ def _build_config_b(args: argparse.Namespace) -> JointConfig:
     )
 
 
-def _true_fixed_model_b(task, v: int) -> FixedCausalModel:
+def _true_fixed_model_lm(task, v: int) -> FixedCausalModel:
     """FixedCausalModel with the true GT variables + AND label rule."""
     return FixedCausalModel(
         gt_variables_fn=task.gt_variables,
@@ -406,7 +411,7 @@ def _true_fixed_model_b(task, v: int) -> FixedCausalModel:
     )
 
 
-def _wrong_fixed_model_b(task, v: int, k: int) -> FixedCausalModel:
+def _wrong_fixed_model_lm(task, v: int, k: int) -> FixedCausalModel:
     """Deliberately wrong H: a single output-copy variable (Z = y).
 
     The variable count is padded to ``k`` (the layout's ``k_max``) with dead,
@@ -433,7 +438,7 @@ def _wrong_fixed_model_b(task, v: int, k: int) -> FixedCausalModel:
     )
 
 
-def _maybe_save_ckpt_b(
+def _maybe_save_ckpt_lm(
     args: argparse.Namespace,
     rotation,
     layout,
@@ -463,7 +468,7 @@ def _maybe_save_ckpt_b(
     print(f"saved checkpoint to {args.save_ckpt}")
 
 
-def _add_recovery_b(result: dict, causal_model, task, config: JointConfig, gates=None) -> None:
+def _add_recovery_lm(result: dict, causal_model, task, config: JointConfig, gates=None) -> None:
     if task.k_gt > 0:
         gen = torch.Generator(device=config.device).manual_seed(config.seed + 1)
         live = gates.live_indices() if gates is not None else None
@@ -473,8 +478,8 @@ def _add_recovery_b(result: dict, causal_model, task, config: JointConfig, gates
         result["recovery_score"] = rec.best_score
 
 
-def build_phase_b_parser(prog: str | None = None) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog, description="Joint-DAS Phase B runner")
+def build_lm_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog, description="Joint-DAS LM runner")
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-0.5B-Instruct")
     parser.add_argument("--layer", type=int, required=True)
     parser.add_argument(
@@ -583,7 +588,7 @@ def build_phase_b_parser(prog: str | None = None) -> argparse.ArgumentParser:
     return parser
 
 
-def run_phase_b(args: argparse.Namespace) -> None:
+def run_lm(args: argparse.Namespace) -> None:
     from jdas.models.hf import FeaturizedCausalModel, load_hf_site
     from jdas.tasks.price_tagging import PriceTaggingTask
 
@@ -601,7 +606,7 @@ def run_phase_b(args: argparse.Namespace) -> None:
         use_chat_template=args.chat_template,
         position=args.position,
     )
-    config = _build_config_b(args)
+    config = _build_config_lm(args)
 
     d = site.d
     match args.method:
@@ -638,24 +643,24 @@ def run_phase_b(args: argparse.Namespace) -> None:
                 site, task, causal_model, rotation, layout, config, gates=gates
             )
             train_out = trainer.train()
-            _maybe_save_ckpt_b(
+            _maybe_save_ckpt_lm(
                 args, rotation, layout, causal_model, config, train_out, gates=gates
             )
-            _add_recovery_b(result, causal_model, task, config, gates=gates)
+            _add_recovery_lm(result, causal_model, task, config, gates=gates)
             if args.method == "joint" and not args.no_refit:
                 refit = refit_rotation(site, task, causal_model, config, gates=gates)
                 result["refit_iia_1"] = refit["refit_iia_1"]
                 result["refit_iia_2"] = refit["refit_iia_2"]
         case "das_true":
-            causal_model = _true_fixed_model_b(task, args.v)
+            causal_model = _true_fixed_model_lm(task, args.v)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
-            _maybe_save_ckpt_b(args, rotation, layout, causal_model, config, train_out)
+            _maybe_save_ckpt_lm(args, rotation, layout, causal_model, config, train_out)
         case "das_wrong":
-            causal_model = _wrong_fixed_model_b(task, args.v, k_max)
+            causal_model = _wrong_fixed_model_lm(task, args.v, k_max)
             trainer = DASTrainer(site, task, causal_model, rotation, layout, config)
             train_out = trainer.train()
-            _maybe_save_ckpt_b(args, rotation, layout, causal_model, config, train_out)
+            _maybe_save_ckpt_lm(args, rotation, layout, causal_model, config, train_out)
         case _:
             raise SystemExit(f"unknown method {args.method!r}")
 
@@ -758,7 +763,7 @@ def _render_search_markdown(res: dict) -> str:
 
 
 def build_search_parser(prog: str | None = None) -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog=prog, description="Discrete search baseline (Phase A)")
+    p = argparse.ArgumentParser(prog=prog, description="Discrete search baseline (toy model)")
     p.add_argument(
         "--task", choices=["hierarchical_equality", "boolean_comp"], required=True
     )
@@ -777,8 +782,8 @@ def build_search_parser(prog: str | None = None) -> argparse.ArgumentParser:
 
 def run_search(args: argparse.Namespace) -> None:
     torch.manual_seed(args.seed)
-    task = _load_task_a(args.task)
-    site = _load_site_a(task, args.site_layer, args.device)
+    task = _load_task_toy(args.task)
+    site = _load_site_toy(task, args.site_layer, args.device)
     d = site.d
 
     config = JointConfig(
@@ -881,7 +886,7 @@ LIVE_THRESH = 0.02
 
 
 def build_seed_study_parser(prog: str | None = None) -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog=prog, description="Seed / basis variance study (Phase A)")
+    p = argparse.ArgumentParser(prog=prog, description="Seed / basis variance study (toy model)")
     p.add_argument(
         "--task", choices=["hierarchical_equality", "boolean_comp"],
         default="hierarchical_equality",
@@ -902,7 +907,7 @@ def build_seed_study_parser(prog: str | None = None) -> argparse.ArgumentParser:
 
 def run_seed_study(args: argparse.Namespace) -> None:
     # Reuse the shared wiring + per-variable liveness measurement from the
-    # introspection script (same code path as run_phase_a).
+    # introspection script (same code path as run_toy).
     import math
     import sys
     from pathlib import Path as _Path
@@ -913,7 +918,7 @@ def run_seed_study(args: argparse.Namespace) -> None:
     if _repo_root not in sys.path:
         sys.path.insert(0, _repo_root)
 
-    from experiments.introspect_phase_a import (
+    from experiments.introspect_toy import (
         _infer_input_dim as _isp_infer_input_dim,
         _load_site as _isp_load_site,
         _load_task as _isp_load_task,

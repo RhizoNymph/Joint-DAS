@@ -1,6 +1,6 @@
-"""Introspect a joint-DAS learned causal model (Phase A scientific analysis).
+"""Introspect a joint-DAS learned causal model (toy-model scientific analysis).
 
-Retrains a joint run with the *same code path* as ``run_phase_a.py`` (default:
+Retrains a joint run with the *same code path* as ``jdas run toy`` (default:
 hierarchical_equality, joint, site-layer 1, seed 0, 4000 steps) and then opens up
 the learned causal model H_theta to answer: *what did the learned variables
 become?*
@@ -49,7 +49,7 @@ from jdas.training import JointConfig, JointTrainer, refit_rotation
 from jdas.types import InterventionBatch
 
 
-# -- task/site loading (mirrors run_phase_a.py) --------------------------------
+# -- task/site loading (mirrors jdas run toy) ----------------------------------
 
 
 def _load_task(name: str):
@@ -435,7 +435,7 @@ def main() -> None:
         i, j = order[0], order[1]
         pair_vs_gt = _pair_vs_gt_table(learned_argmax, gt_vars, i, j)
 
-    # Recovery + refit (same as run_phase_a).
+    # Recovery + refit (same as jdas run toy).
     rec_gen = torch.Generator(device=device).manual_seed(args.seed + 1)
     rec = recovery(causal_model, task, generator=rec_gen)
     refit = refit_rotation(site, task, causal_model, config)

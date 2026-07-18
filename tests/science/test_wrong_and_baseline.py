@@ -12,10 +12,10 @@ import argparse
 import pytest
 import torch
 
-from experiments.run_phase_a import (
-    _load_task,
-    _wrong_and_agreement_ceiling,
-    _wrong_and_fixed_model,
+from jdas.cli.runners import (
+    _load_task_toy as _load_task,
+    _wrong_and_agreement_ceiling_toy as _wrong_and_agreement_ceiling,
+    _wrong_and_fixed_model_toy as _wrong_and_fixed_model,
     _wrong_law_label_fn,
 )
 

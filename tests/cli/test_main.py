@@ -22,14 +22,17 @@ _SPEC_DIR = Path(__file__).resolve().parents[2] / "experiments" / "sweeps"
 _HELP_INVOCATIONS = [
     ["--help"],
     ["run", "--help"],
-    ["run", "phase-a", "--help"],
-    ["run", "phase-b", "--help"],
+    ["run", "toy", "--help"],
+    ["run", "lm", "--help"],
     ["run", "search", "--help"],
     ["run", "seed-study", "--help"],
     ["analyze", "--help"],
     ["analyze", "gates", "--help"],
-    ["analyze", "phase-a", "--help"],
-    ["analyze", "night2", "--help"],
+    ["analyze", "toy", "--help"],
+    ["analyze", "capped-lm", "--help"],
+    ["analyze", "seed-basis", "--help"],
+    ["analyze", "search", "--help"],
+    ["analyze", "falsification", "--help"],
     ["sweep", "--help"],
     ["sweep", "run", "--help"],
     ["sweep", "status", "--help"],
@@ -53,24 +56,24 @@ def test_help_exits_zero(argv):
 # -- leaf dispatch wiring -----------------------------------------------------
 
 
-def test_run_phase_a_leaf_records_handler():
+def test_run_toy_leaf_records_handler():
     from jdas.cli import runners
 
     parser = build_parser()
     args = parser.parse_args(
-        ["run", "phase-a", "--task", "hierarchical_equality", "--method", "joint"]
+        ["run", "toy", "--task", "hierarchical_equality", "--method", "joint"]
     )
-    assert args._run_fn is runners.run_phase_a
+    assert args._run_fn is runners.run_toy
     assert args.task == "hierarchical_equality"
     assert args.method == "joint"
 
 
-def test_run_phase_b_leaf_records_handler():
+def test_run_lm_leaf_records_handler():
     from jdas.cli import runners
 
     parser = build_parser()
-    args = parser.parse_args(["run", "phase-b", "--layer", "17", "--method", "das_true"])
-    assert args._run_fn is runners.run_phase_b
+    args = parser.parse_args(["run", "lm", "--layer", "17", "--method", "das_true"])
+    assert args._run_fn is runners.run_lm
     assert args.layer == 17
 
 
@@ -84,9 +87,9 @@ def test_analyze_gates_leaf_records_handler():
 
 def test_cluster_kill_parses_pattern():
     parser = build_parser()
-    args = parser.parse_args(["cluster", "kill", "run_phase_b"])
+    args = parser.parse_args(["cluster", "kill", "jdas run lm"])
     assert args.cluster_cmd == "kill"
-    assert args.pattern == "run_phase_b"
+    assert args.pattern == "jdas run lm"
 
 
 def test_cluster_exec_remainder():

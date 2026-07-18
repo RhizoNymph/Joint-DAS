@@ -1,9 +1,13 @@
-"""``jdas analyze`` dispatch to the existing analyzer modules.
+"""``jdas analyze`` dispatch to the analyzer modules.
 
-Thin adapters that build the same argparse each analyzer script exposes (so
-default paths and flags stay identical) and call its ``main()`` with a rebuilt
-``sys.argv``.  The analyzers themselves (``experiments/analyze*.py``) are
-unchanged and remain importable modules.
+Thin adapters that build an argparse for each analyzer subcommand (so default
+paths and flags stay stable) and call the corresponding module entry point with
+a rebuilt ``sys.argv``.  The analyzers live in ``experiments/``:
+
+- ``analyze_gates``   -> ``jdas analyze gates`` (night-3 gate sweeps).
+- ``analyze_toy_lm``  -> ``jdas analyze toy`` (toy-model / LM aggregate table).
+- ``analyze_studies`` -> ``jdas analyze capped-lm | seed-basis | search |
+  falsification`` (one descriptive subcommand per study plot).
 
 The analyzers live under ``experiments/`` (a namespace package that is not
 installed), so we make the repo root importable before importing them — the
@@ -35,8 +39,8 @@ def build_gates_parser(prog: str | None = None) -> argparse.ArgumentParser:
     return p
 
 
-def build_phase_a_analyze_parser(prog: str | None = None) -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog=prog, description="Aggregate Phase A/B results")
+def build_toy_analyze_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog=prog, description="Aggregate toy-model / LM results")
     p.add_argument("--results-dir", required=True)
     p.add_argument("--out-md", required=True)
     p.add_argument("--assets-dir", default="docs/assets")
@@ -44,9 +48,10 @@ def build_phase_a_analyze_parser(prog: str | None = None) -> argparse.ArgumentPa
     return p
 
 
-def build_night2_parser(prog: str | None = None) -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog=prog, description="Night-2 Joint-DAS plots")
-    p.add_argument("--night2-dir", default="experiments/results/night2")
+def build_studies_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog=prog, description="Joint-DAS study plot")
+    # Default points at the historical committed data directory (unchanged).
+    p.add_argument("--studies-dir", default="experiments/results/night2")
     p.add_argument("--assets-dir", default="docs/assets")
     return p
 
@@ -69,9 +74,21 @@ def run_gates(argv: list[str]) -> None:
     _call_main("experiments.analyze_gates", "main", argv)
 
 
-def run_phase_a_analyze(argv: list[str]) -> None:
-    _call_main("experiments.analyze", "main", argv)
+def run_toy_analyze(argv: list[str]) -> None:
+    _call_main("experiments.analyze_toy_lm", "main", argv)
 
 
-def run_night2(argv: list[str]) -> None:
-    _call_main("experiments.analyze_night2", "main", argv)
+def run_capped_lm(argv: list[str]) -> None:
+    _call_main("experiments.analyze_studies", "capped_lm", argv)
+
+
+def run_seed_basis(argv: list[str]) -> None:
+    _call_main("experiments.analyze_studies", "seed_basis", argv)
+
+
+def run_search_ranking(argv: list[str]) -> None:
+    _call_main("experiments.analyze_studies", "search_ranking", argv)
+
+
+def run_falsification(argv: list[str]) -> None:
+    _call_main("experiments.analyze_studies", "falsification", argv)

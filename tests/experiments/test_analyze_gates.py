@@ -2,7 +2,7 @@
 
 Covers partial-directory robustness (missing dir, malformed JSON,
 schema-incomplete JSON are skipped) and table/plot generation from synthetic
-result dicts that mirror the ``run_phase_a`` / ``run_phase_b`` gate schema.
+result dicts that mirror the ``jdas run toy`` / ``jdas run lm`` gate schema.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from experiments.analyze_gates import (
 def _toy_result(
     *, task: str, layer: int, lam: float, seed: int, gated_k: int
 ) -> dict:
-    """A synthetic Phase-A gate run mirroring run_phase_a's JSON schema."""
+    """A synthetic toy-model gate run mirroring jdas run toy's JSON schema."""
     return {
         "config": {
             "task": task,

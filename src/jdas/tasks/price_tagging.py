@@ -41,7 +41,7 @@ The learned causal model can't read variable-length token ids directly, so
 ``(X, Y, Z)`` (via the tokenizer + a regex on the rendered prompt) and
 normalizes to ``[0, 1]`` by dividing by 10.  This is a deterministic,
 non-differentiable feature map; the trainable per-variable MLPs sit on top of
-it (see :mod:`jdas.models.hf` / ``experiments/run_phase_b.py``).
+it (see :mod:`jdas.models.hf` / ``jdas run lm``).
 """
 
 from __future__ import annotations
@@ -156,7 +156,7 @@ class PriceTaggingTask:
         """
         return (vars[:, 0].bool() & vars[:, 1].bool()).long()
 
-    # Alias so ``experiments/run_phase_b.py`` (mirroring Phase A) can build the
+    # Alias so the LM runner (mirroring the toy runner) can build the
     # true/wrong FixedCausalModel via ``task.label_from_variables``.
     def label_from_variables(self, vars: torch.Tensor) -> torch.Tensor:
         return self.gt_label_fn(vars)

@@ -37,7 +37,7 @@ _TASK_SHORT = {
 }
 
 # Sweep runner -> the ``jdas run <subcommand>`` it maps to.
-_RUNNERS = ("phase-a", "phase-b", "search", "seed-study")
+_RUNNERS = ("toy", "lm", "search", "seed-study")
 
 
 class SweepError(Exception):

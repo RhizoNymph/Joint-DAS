@@ -8,11 +8,11 @@
 # 3-method layer-17 comparison that RESULTS.md N2.2 reports. The one-off
 # variants (z_digits, layer 10, k2, prune5x, seed-1 replicate) are NOT included
 # here as they had irregular per-run configs; run those individually with
-# `jdas run phase-b` if needed.
+# `jdas run lm` if needed.
 
 [sweep]
 name = "night2_capped_lm"
-runner = "phase-b"
+runner = "lm"
 out_dir = "night2_capped"
 out_pattern = "pt_{method}_l17_capped.json"
 
