@@ -13,6 +13,9 @@ dependencies = [
     "accelerate==1.8.1",
 ]
 
+[project.scripts]
+jdas = "jdas.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest==8.4.1",

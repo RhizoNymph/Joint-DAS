@@ -1,0 +1,26 @@
+# Night-3 toy gate sweep v2 (gate-lr fix: dedicated --gate-lr 0.05).
+# 45 runs: {hier l1, hier l2, bool l1} x lambda_gate {0,0.01,0.03,0.1,0.3} x seeds {0,1,2}.
+# Reconstructed from scripts/gates_v2_node{0,1,2}.sh (the toy() function).
+
+[sweep]
+name = "gates_toy_v2"
+runner = "phase-a"
+out_dir = "night3/gates_toy_v2"
+out_pattern = "{task_short}_l{site_layer}_lg{lambda_gate}_s{seed}.json"
+
+[grid]
+"task+site_layer" = [
+  ["hierarchical_equality", 1],
+  ["hierarchical_equality", 2],
+  ["boolean_comp", 1],
+]
+lambda_gate = [0, 0.01, 0.03, 0.1, 0.3]
+seed = [0, 1, 2]
+
+[fixed]
+method = "joint"
+gates = true
+gate_lr = 0.05
+steps = 1500
+k_max = 4
+device = "cuda"

@@ -5,9 +5,14 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache
 
 # Virtual environments
 .venv
 experiments/results/
 experiments/toy_ckpts/
 experiments/logs/
+experiments/ckpts/
+
+# Machine-specific env config override
+jdas.local.toml

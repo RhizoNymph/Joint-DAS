@@ -1,0 +1,38 @@
+# Night-3 LM gate sweep v2 (gate-lr fix: dedicated --gate-lr 0.05).
+# 7 runs on Qwen2.5-1.5B l17, capped recipe.
+# Reconstructed from scripts/gates_v2_node{0,1,2}.sh (the lm() function; tag pt_gates2_).
+
+[sweep]
+name = "gates_lm_v2"
+runner = "phase-b"
+out_dir = "night3/gates_lm_v2"
+out_pattern = "pt_gates2_l17_lg{lambda_gate}_s{seed}.json"
+
+[grid]
+"lambda_gate+seed" = [
+  [0, 0],
+  [0.01, 0],
+  [0.01, 1],
+  [0.05, 0],
+  [0.05, 1],
+  [0.2, 0],
+  [0.2, 1],
+]
+
+[fixed]
+method = "joint"
+model = "Qwen/Qwen2.5-1.5B-Instruct"
+layer = 17
+template_id = 3
+device = "cuda"
+steps = 800
+batch_size = 32
+k_max = 4
+max_width = 128
+init_width = 32
+sparse_mode = "per_dim"
+lambda_sparse = 0.02
+gates = true
+gate_lr = 0.05
+no_refit = true
+local_files_only = true
