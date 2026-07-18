@@ -496,10 +496,41 @@ instance of a sparsity mechanism silently disabled by gradient scale —
 first the width clamp (N2.1), now the gate optimizer; both were
 λ-independent, which is the tell.
 
-### N3.3 — v2 sweeps with gate_lr = 0.05
+### N3.3 — v2 sweeps (gate_lr = 0.05): the mechanism is bistable, and both basins are wrong
 
-(placeholder: toy 45-run sweep — hier l1/l2, bool l1 × λ_gate ∈
-{0, 0.01, 0.03, 0.1, 0.3} × 3 seeds — and LM 7-run sweep, results pending)
+Full rerun with the dedicated gate lr: toy 45 runs (hier l1/l2, bool l1 ×
+λ_gate ∈ {0, 0.01, 0.03, 0.1, 0.3} × 3 seeds, 1500 steps) and LM 7 runs
+(λ_gate ∈ {0, 0.01, 0.05, 0.2}, 800 steps). Results in
+`experiments/results/night3/gates_{toy,lm}_v2/`, tables in
+`gates_v2_summary.md`, figure `docs/assets/night3_gates_v2.png`.
+
+**Toy: gates saturate open (45/45).** gated_k = 4 everywhere, live-IIA
+matches ungated joint (~0.92–0.97 at l1; l2 shows the usual deep-layer seed
+variance), λ has no visible effect from 0 to 0.3. Mechanism: early in
+training H distributes the label computation across all four variables, so
+each gate receives a CF-usefulness gradient that pushes log_alpha up; once
+gates are confidently open, the hard-concrete penalty's derivative
+sigmoid'(log_alpha − β·log(−γ/ζ)) is exponentially small — the penalty
+cannot pull a saturated-open gate back within the horizon at any tested λ.
+This is the project's **third λ-independent gradient-death instance** (width
+clamp N2.1, gate optimizer N3.1, now penalty saturation).
+
+**LM: gates collapse closed (7/7) — including λ_gate = 0.** All four gates
+dead by step 80 (prune_step = 80 in every run), gated_k = 0, live-IIA
+undefined, recovery 0. With the CF task still hard early at LM scale, the
+easiest descent direction for a fast-moving gate parameter is to close
+everything: a closed gate makes every interchange a no-op, the counterfactual
+target collapses to the clean label, and the symmetric CF loss becomes easy.
+That λ = 0 also collapses proves this is the CF gradient, not the penalty.
+
+**Interpretation.** With gate_lr matched to the run horizon, the gate system
+is bistable: whichever side's gradient dominates *while gates are still
+mobile* wins the race — toy (easy CF early) → all-open; LM (hard CF early) →
+all-closed — and the λ penalty is never the deciding force at reasonable
+magnitudes. Variable-count minimality therefore isn't a matter of adding an
+L0 term; it requires controlling the *training schedule*: let variables
+become causally useful first (gate warmup), then apply pruning pressure
+(λ ramp), and keep both saturation regions gradient-alive (clamp log_alpha).
 
 ## 6. Limitations & next steps
 
