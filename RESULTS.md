@@ -442,6 +442,65 @@ minimal variable count. Raising the per-dim λ 5× shrinks nothing further and
 does not kill redundant variables — variable-count pruning needs an explicit
 mechanism (e.g. per-variable gates), not just width pressure.
 
+## Night 3 — learning the variable count: hard-concrete gates
+
+Night 2 ended with the open problem: joint prefers redundant 4-variable
+solutions even where 2 suffice (N2.6), and width pressure cannot prune
+variables. Night 3 adds the explicit mechanism: per-variable hard-concrete
+(L0) gates (Louizos et al. 2017), spec in `docs/features/variable-gates.md`.
+Each variable slot gets a stochastic gate g_i ∈ [0,1]; the *same* per-step
+sample scales the variable's subspace width on the N side and masks its
+discretized value on the H side (straight-through), so a closed gate is a
+no-op in both N and H simultaneously. The loss adds λ_gate · E[#open gates].
+Because dead-variable swaps are trivially consistent, gated runs report
+**live-restricted IIA** (`iia_1_live`/`iia_2_live`, swaps sampled over live
+variables only) alongside the standard metrics; `gated_k` (parameter-based)
+and `effective_k` (behavioral flip-rate) act as independent live counts.
+
+### N3.1 — First LM sweep: gates were inert, and the reason is another gradient-scale bug
+
+Qwen2.5-1.5B l17, capped recipe + gates, 800 steps, k_max=4, λ_gate ∈
+{0, 0.01, 0.05, 0.2} (`experiments/results/night3/gates_lm/`):
+
+| λ_gate | seed | gated_k | eff_k | iia_1_live | iia_2_live | recovery | dims |
+|---|---|---|---|---|---|---|---|
+| 0 | 0 | 4 | 4 | 0.707 | 0.793 | 0.822 | 71 |
+| 0.01 | 0 | 4 | 4 | 0.723 | 0.777 | 0.821 | 70 |
+| 0.01 | 1 | 4 | 3 | 0.848 | 0.840 | 0.730 | 68 |
+| 0.05 | 0 | 4 | 4 | 0.742 | 0.820 | 0.829 | 72 |
+| 0.05 | 1 | 4 | 3 | 0.875 | 0.855 | 0.717 | 68 |
+| 0.2 | 0 | 4 | 4 | 0.719 | 0.801 | 0.828 | 71 |
+| 0.2 | 1 | 4 | 3 | 0.863 | 0.812 | 0.704 | 67 |
+
+No pruning anywhere: gated_k = 4 at every λ, and the g_det trajectories are
+nearly identical across λ = 0 and λ = 0.2 (all drift 0.96 → ~0.90 in
+lockstep) — the penalty term was doing essentially nothing, echoing N2.1's
+λ-independent collapse. The diagnosis this time is an **Adam speed limit**:
+per-parameter Adam steps are bounded by ~lr per step, so with the shared
+lr = 1e-3 and 800 steps, `log_alpha` (init +2.0) can move at most ~0.8 —
+but closing a gate requires crossing to ≈ −0.4. No λ can overcome a
+parameterization whose optimizer cannot reach the closed region within the
+run. (Note the seed-1 runs: one variable goes *behaviorally* dead —
+effective_k = 3 — with the best live-IIA of the sweep, 0.85–0.88, while its
+gate stays open: the causal structure wants to be smaller than the gate
+parameterization could express.)
+
+### N3.2 — The fix: a dedicated gate learning rate
+
+`JointConfig.gate_lr` puts `log_alpha` in its own optimizer param group
+(plus `gate_init` to start gates nearer the threshold). Regression test
+(synthetic, 400 steps, λ_gate=1.0): with gate_lr = 0.05, gated_k 4 → 0
+(log_alpha reaches −6.3); with the shared lr = 1e-3, gated_k stays 4
+(log_alpha barely moves, +2.0 → +1.8). This is the project's second
+instance of a sparsity mechanism silently disabled by gradient scale —
+first the width clamp (N2.1), now the gate optimizer; both were
+λ-independent, which is the tell.
+
+### N3.3 — v2 sweeps with gate_lr = 0.05
+
+(placeholder: toy 45-run sweep — hier l1/l2, bool l1 × λ_gate ∈
+{0, 0.01, 0.03, 0.1, 0.3} × 3 seeds — and LM 7-run sweep, results pending)
+
 ## 6. Limitations & next steps
 
 **Closed by Night 2:**
