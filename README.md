@@ -23,8 +23,12 @@ that separates real causal factorizations from degenerate ones.
 - `src/jdas/models/` — toy MLPs and the HuggingFace intervention site.
 - `src/jdas/cli/` — the unified `jdas` CLI (run/analyze/sweep/cluster) and
   `EnvConfig` loaded from `jdas.toml`.
-- `experiments/` — thin run shims, screening/analysis/introspection modules,
-  and declarative sweep specs under `experiments/sweeps/`.
+- `experiments/` — analyzer modules, one-off diagnostics, committed result
+  JSONs under `experiments/results/`, and declarative sweep specs under
+  `experiments/sweeps/`.
+- `jdas.toml` — environment config (cluster hosts, remote dir, paths, model
+  ids, HF env). Machine-specific overrides go in a gitignored
+  `jdas.local.toml` (or point `JDAS_CONFIG` / `--config` at any TOML).
 
 ## Quickstart
 
@@ -44,4 +48,41 @@ uv run jdas run lm \
 ```
 
 Methods: `joint` (ours), `das_true` (classic DAS with the ground-truth model),
-`das_wrong` (output-copy strawman), `random_rotation` (frozen-Q control).
+`das_wrong` (output-copy strawman), `das_wrong_and` (wrong composition law,
+with analytic agreement ceiling), `random_rotation` (frozen-Q control).
+
+## Sweeps and cluster runs
+
+Sweeps are declarative TOML specs (grid axes + fixed args + output pattern);
+the specs under `experiments/sweeps/` reproduce every committed result grid.
+Runs whose output JSON already exists are skipped, so re-running a spec
+resumes it.
+
+```bash
+# Expand a spec and show the run list + host assignment (nothing executes)
+uv run jdas sweep run experiments/sweeps/gates_toy_v3.toml --dry-run
+
+# Run locally, or fan out over the hosts in jdas.toml (one GPU per host)
+uv run jdas sweep run experiments/sweeps/gates_toy_v3.toml --where local
+uv run jdas sweep run experiments/sweeps/gates_lm_v3.toml --where cluster --wait
+
+uv run jdas sweep status  experiments/sweeps/gates_lm_v3.toml
+uv run jdas sweep collect experiments/sweeps/gates_lm_v3.toml  # rsync results back
+
+# Cluster utilities
+uv run jdas cluster sync      # rsync repo + uv sync on every host
+uv run jdas cluster status    # per-host processes + GPU memory
+```
+
+## Analysis
+
+```bash
+uv run jdas analyze toy --results-dir experiments/results/phase_a
+uv run jdas analyze gates                # gate sweeps (toy + LM)
+uv run jdas analyze capped-lm            # capped LM method comparison
+uv run jdas analyze seed-basis           # basis (non-)identifiability study
+uv run jdas analyze search               # brute-force hypothesis search ranking
+uv run jdas analyze falsification        # wrong-composition ceilings
+```
+
+Tables land next to the result JSONs; figures under `docs/assets/`.
