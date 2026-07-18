@@ -51,6 +51,22 @@ Features Index:
       experiments/run_phase_b.py, experiments/screen_lm.py]
     depends_on: [jdas_core]
     doc: docs/features/lm_phase.md
+  variable_gates:
+    description: >
+      Per-variable hard-concrete (L0) gates for the joint method: an intrinsic
+      Occam mechanism that learns the number of *live* causal variables rather
+      than fixing it at k_max. One stochastic gate per variable slot; the SAME
+      gate sample scales N-side subspace widths (w_eff = g*w) and masks H-side
+      variable values (straight-through hard gate) within one forward, so a dead
+      variable is a no-op on both sides. Gate penalty lambda_gate*L0 is added to
+      the loss. Eval adds live-restricted IIA (iia_1_live/iia_2_live) and
+      gated_k. Enabled via run_phase_a/b --gates --lambda-gate; applies only to
+      joint / random_rotation.
+    entry_points: [src/jdas/gates.py, src/jdas/rotation.py,
+      src/jdas/causal_model.py, src/jdas/training.py, src/jdas/eval.py,
+      experiments/run_phase_a.py, experiments/run_phase_b.py]
+    depends_on: [jdas_core]
+    doc: docs/features/variable-gates.md
   phase_a_science:
     description: >
       Night-2 measurement tooling over the two GT boolean atoms: seed/basis
