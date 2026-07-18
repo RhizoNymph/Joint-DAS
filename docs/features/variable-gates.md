@@ -63,6 +63,51 @@ gate parameters live on a very different scale from `Q`/boundaries/`H`.
   `2.0`/`None`). `log_alpha` itself is restored from the state dict, so
   `gate_init` is informational on reload.
 
+### Bistability and the training schedule (RESULTS.md N3.3)
+
+With `gate_lr=0.05` (matched to the run horizon) the L0 term is *still* not the
+deciding force — the gate system is **bistable**, and whichever gradient
+dominates *while gates are still mobile* wins the race:
+
+- **Toy → all-open (penalty saturation).** CF-usefulness gradients push every
+  `log_alpha` up early; once a gate is confidently open the penalty derivative
+  `sigmoid'(log_alpha − β·log(−γ/ζ))` is exponentially small, so no `λ ≤ 0.3`
+  can pull a saturated-open gate back within the horizon. (The project's third
+  λ-independent gradient-death instance, after the N2.1 width clamp and the
+  N3.1 gate-optimizer speed limit.)
+- **LM → all-closed (CF collapse).** The CF task is hard early at LM scale, so
+  the easiest descent direction for a fast gate parameter is to *close*
+  everything: a closed gate makes every interchange a no-op and the
+  counterfactual target collapses to the clean label. Gates die by step ~80
+  even at `λ_gate = 0`, proving the collapse is the CF gradient, not the penalty.
+
+The fix is not a bigger `λ` — it is controlling the schedule so variables
+become causally useful *first*, then applying pruning pressure gently, and
+keeping both saturation regions gradient-alive. Three `JointConfig` knobs (all
+threaded from `--gate-warmup`/`--gate-lambda-ramp`/`--gate-clamp` in
+`run_phase_a.py`/`run_phase_b.py`, recorded in checkpoint gate meta, and echoed
+per-eval in history as `gate_phase` + `lambda_gate_eff`):
+
+- `gate_warmup_steps: int = 0` — while `step < gate_warmup_steps`, training is
+  **numerically identical to a no-gates run**: `gate=None` is threaded
+  everywhere (full widths, no H-side value mask), the gate penalty is omitted
+  from the loss, and the gate params receive no updates (the forward never
+  touches `log_alpha`, so its grad stays `None` and AdamW skips it). This lets H
+  distribute the computation across the variables before any gate can close.
+- `gate_lambda_ramp_steps: int = 0` — after warmup, the effective `λ_gate`
+  scales linearly `0 → config.lambda_gate` over this many steps (`0` = instant
+  full λ). Gentle onset avoids the sudden penalty spike that snaps mobile gates
+  into the closed basin.
+- `gate_clamp: float | None = 3.0` — after each *active* optimizer step,
+  `log_alpha` is clamped in place to `[−gate_clamp, +gate_clamp]` so neither the
+  open- nor closed-saturation region kills the penalty/sample gradient (`None`
+  disables). The clamp is a no-op during warmup, preserving the warmup ==
+  no-gates invariant.
+
+The **gate phase** at a step is `warmup` (`step < gate_warmup_steps`), `ramp`
+(within the ramp window), or `active` (full λ); it is recorded in every history
+record for gated runs so the dynamics are visible in the result JSONs.
+
 ## Coupling (both sides must see the same gate)
 
 - **N-side (subspace)**: effective width `w_eff_i = g_i * w_i` is used to build
@@ -97,8 +142,10 @@ and must not be the only thing evaluated (see metrics).
   masking with straight-through hard gate.
 - `src/jdas/training.py` — `JointConfig.lambda_gate` (default 0.0) +
   `use_gates`; `gate_lr`/`gate_init` optimization knobs (separate optimizer
-  param group for gates); L_gate term; gates included in checkpoints; gate stats
-  in history.
+  param group for gates); `gate_warmup_steps`/`gate_lambda_ramp_steps`/
+  `gate_clamp` schedule knobs (`_gates_active`/`_gate_phase`/
+  `_effective_lambda_gate` helpers + `_post_step` clamp); L_gate term; gates
+  included in checkpoints; gate stats + `gate_phase`/`lambda_gate_eff` in history.
 - `src/jdas/eval.py` — live-restricted IIA variant; `gated_k`.
 - `experiments/run_phase_a.py`, `experiments/run_phase_b.py` — `--gates`,
   `--lambda-gate`, `--gate-lr`, `--gate-init`, gate metrics in result JSON.

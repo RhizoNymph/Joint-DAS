@@ -70,6 +70,9 @@ def _build_config(args: argparse.Namespace) -> JointConfig:
         lambda_gate=args.lambda_gate,
         gate_lr=args.gate_lr,
         gate_init=args.gate_init,
+        gate_warmup_steps=args.gate_warmup,
+        gate_lambda_ramp_steps=args.gate_lambda_ramp,
+        gate_clamp=args.gate_clamp,
     )
 
 
@@ -210,6 +213,24 @@ def main() -> None:
         type=float,
         default=2.0,
         help="initial log_alpha for every gate (+2.0 ~= 0.88 open)",
+    )
+    parser.add_argument(
+        "--gate-warmup",
+        type=int,
+        default=0,
+        help="steps of gate warmup (gates inert = no-gates run) before pruning",
+    )
+    parser.add_argument(
+        "--gate-lambda-ramp",
+        type=int,
+        default=0,
+        help="steps to ramp effective lambda_gate 0->lambda_gate after warmup",
+    )
+    parser.add_argument(
+        "--gate-clamp",
+        type=float,
+        default=3.0,
+        help="clamp log_alpha to [-c, +c] after active steps (keeps grad alive)",
     )
     parser.add_argument(
         "--max-width",

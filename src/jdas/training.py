@@ -78,6 +78,22 @@ class JointConfig:
     # penalty actually close gates.
     gate_lr: float | None = None
     gate_init: float = 2.0
+    # Gate training schedule (RESULTS.md N3.3: the gate system is bistable —
+    # whichever gradient dominates while gates are still mobile wins the race,
+    # and the L0 penalty is never the deciding force).  These three knobs
+    # control the schedule so pruning is deliberate rather than a race artifact.
+    #   gate_warmup_steps: while step < this, training is numerically identical
+    #     to a no-gates run — gate=None threaded everywhere, no gate penalty, and
+    #     gate params receive no updates.  Lets variables become causally useful
+    #     before any pruning pressure applies.
+    #   gate_lambda_ramp_steps: after warmup, the effective lambda_gate scales
+    #     linearly 0 -> lambda_gate over this many steps (0 = instant full λ).
+    #   gate_clamp: after each active optimizer step, clamp gates.log_alpha to
+    #     [-gate_clamp, +gate_clamp] so neither the open- nor closed-saturation
+    #     region kills the penalty/sample gradient.  None disables the clamp.
+    gate_warmup_steps: int = 0
+    gate_lambda_ramp_steps: int = 0
+    gate_clamp: float | None = 3.0
     # Sparsity penalty parameterization:
     #   "normalized" -> L_sparse = total_aligned_dims / d  (per-dim grad lambda/d)
     #   "per_dim"    -> L_sparse = total_aligned_dims       (per-dim grad lambda)
@@ -267,14 +283,51 @@ class _BaseTrainer:
         self.layout.set_temperature(tau_m)
         self.causal_model.set_temperature(tau_g)
 
-    def _compute_losses(self, batch: InterventionBatch) -> dict[str, torch.Tensor]:
+    def _gates_active(self, step: int) -> bool:
+        """True when gates participate in the forward/loss/update at ``step``.
+
+        During warmup (``step < gate_warmup_steps``) gates are inert: gate=None
+        is threaded everywhere, no penalty is added, and gate params get no
+        updates — a warmup step is numerically identical to a no-gates run.
+        """
+        return self.gates is not None and step >= self.config.gate_warmup_steps
+
+    def _gate_phase(self, step: int) -> str:
+        """Schedule phase at ``step``: ``warmup`` | ``ramp`` | ``active``."""
+        cfg = self.config
+        if step < cfg.gate_warmup_steps:
+            return "warmup"
+        if step < cfg.gate_warmup_steps + cfg.gate_lambda_ramp_steps:
+            return "ramp"
+        return "active"
+
+    def _effective_lambda_gate(self, step: int) -> float:
+        """Scheduled λ_gate at ``step``.
+
+        0 during warmup; linear 0 -> ``config.lambda_gate`` across the ramp;
+        full ``config.lambda_gate`` afterwards.
+        """
+        cfg = self.config
+        if step < cfg.gate_warmup_steps:
+            return 0.0
+        ramp = cfg.gate_lambda_ramp_steps
+        if ramp <= 0:
+            return cfg.lambda_gate
+        frac = (step - cfg.gate_warmup_steps) / ramp
+        frac = min(max(frac, 0.0), 1.0)
+        return cfg.lambda_gate * frac
+
+    def _compute_losses(
+        self, batch: InterventionBatch, step: int = 0
+    ) -> dict[str, torch.Tensor]:
         cfg = self.config
         # CRITICAL INVARIANT: sample the gate ONCE here and pass the SAME sample
         # to both N's interchange (width scaling) and H's counterfactual/task
         # predictions (value mask), so a dead variable is a no-op on BOTH sides
-        # within this one forward/loss computation.
+        # within this one forward/loss computation.  During warmup gates are
+        # inert (gate=None), making the step identical to a no-gates run.
         gate = None
-        if self.gates is not None:
+        if self._gates_active(step):
             gate = self.gates.sample(generator=self.generator)
 
         # Interchange logits from the frozen network N (soft masks, grads flow).
@@ -334,17 +387,36 @@ class _BaseTrainer:
             + cfg.lambda_sparse * l_sparse
         )
 
-        # L_gate: expected number of open gates (L0 minimality).  Always report
-        # the penalty for logging when gates are on; only add it to the loss when
-        # lambda_gate > 0 (use_gates + lambda_gate=0 is the parameterization
-        # control).
-        if self.gates is not None:
+        # L_gate: expected number of open gates (L0 minimality).  Only added to
+        # the loss when gates are *active* (past warmup) and with the *scheduled*
+        # effective λ (0 during warmup, ramped 0->lambda_gate, then full).
+        # use_gates + lambda_gate=0 remains the costless parameterization
+        # control.  During warmup the penalty is omitted entirely so the step is
+        # identical to a no-gates run.
+        if self._gates_active(step):
             l_gate = self.gates.penalty()
             losses["l_gate"] = l_gate
-            total = total + cfg.lambda_gate * l_gate
+            total = total + self._effective_lambda_gate(step) * l_gate
 
         losses["total"] = total
         return losses
+
+    def _post_step(self, step: int) -> None:
+        """Post-optimizer-step gate maintenance (clamp log_alpha in place).
+
+        Runs only when gates are active (past warmup) and ``gate_clamp`` is set,
+        so neither the open- nor closed-saturation region kills the penalty /
+        sample gradient.  A no-op during warmup — combined with ``gate=None`` in
+        the forward (so ``log_alpha.grad`` stays ``None`` and AdamW skips the
+        param), this guarantees gate params are untouched during warmup.
+        """
+        if not self._gates_active(step):
+            return
+        clamp = self.config.gate_clamp
+        if clamp is None:
+            return
+        with torch.no_grad():
+            self.gates.log_alpha.clamp_(-clamp, clamp)
 
     def _sample_training_batch(self) -> InterventionBatch:
         cfg = self.config
@@ -431,11 +503,12 @@ class _BaseTrainer:
         for step in range(cfg.steps):
             self._set_temperatures(step)
             batch = self._sample_training_batch()
-            losses = self._compute_losses(batch)
+            losses = self._compute_losses(batch, step)
 
             self.optimizer.zero_grad(set_to_none=True)
             losses["total"].backward()
             self.optimizer.step()
+            self._post_step(step)
 
             if cfg.eval_every > 0 and (step % cfg.eval_every == 0 or step == cfg.steps - 1):
                 record: dict[str, object] = {
@@ -448,6 +521,10 @@ class _BaseTrainer:
                     "tau_gumbel": self._current_tau_g(step),
                     "tau_mask": self.layout.temperature,
                 }
+                if self.gates is not None:
+                    # Make the schedule dynamics visible in result JSONs.
+                    record["gate_phase"] = self._gate_phase(step)
+                    record["lambda_gate_eff"] = self._effective_lambda_gate(step)
                 if "l_gate" in losses:
                     record["loss_gate"] = float(losses["l_gate"].item())
                 with torch.no_grad():
@@ -637,6 +714,12 @@ def _gate_meta(gates: VariableGates | None, config: JointConfig) -> dict:
         "zeta": gates.zeta,
         "gate_init": config.gate_init,
         "gate_lr": config.gate_lr,
+        # Schedule knobs (informational; the schedule is a training-time control,
+        # log_alpha is restored from the state dict).  Older gated checkpoints
+        # predate these and default gracefully on load.
+        "gate_warmup_steps": config.gate_warmup_steps,
+        "gate_lambda_ramp_steps": config.gate_lambda_ramp_steps,
+        "gate_clamp": config.gate_clamp,
     }
 
 
