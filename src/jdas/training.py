@@ -69,6 +69,15 @@ class JointConfig:
     # costless).
     use_gates: bool = False
     lambda_gate: float = 0.0
+    # Gate optimization knobs.  ``gate_init`` is the initial ``log_alpha`` for
+    # every gate (default ``+2.0`` ~= 0.88 open).  ``gate_lr`` is a dedicated
+    # learning rate for the gate parameters (``None`` -> use ``lr``): Adam moves
+    # ``log_alpha`` by at most ~lr per step, so at ``lr=1e-3`` the init ``+2.0``
+    # cannot reach the ``-0.4`` needed to close a gate within a few hundred to a
+    # couple thousand steps; a larger ``gate_lr`` (e.g. ``0.05``) lets the L0
+    # penalty actually close gates.
+    gate_lr: float | None = None
+    gate_init: float = 2.0
     # Sparsity penalty parameterization:
     #   "normalized" -> L_sparse = total_aligned_dims / d  (per-dim grad lambda/d)
     #   "per_dim"    -> L_sparse = total_aligned_dims       (per-dim grad lambda)
@@ -100,6 +109,9 @@ class JointConfig:
 
     def resolved_lr_causal(self) -> float:
         return self.lr if self.lr_causal is None else self.lr_causal
+
+    def resolved_gate_lr(self) -> float:
+        return self.lr if self.gate_lr is None else self.gate_lr
 
 
 def _anneal(start: float, end: float, step: int, total: int, mode: str) -> float:
@@ -241,7 +253,9 @@ class _BaseTrainer:
         if self.gates is not None:
             gate_params = [p for p in self.gates.parameters() if p.requires_grad]
             if gate_params:
-                groups.append({"params": gate_params, "lr": self.config.lr})
+                groups.append(
+                    {"params": gate_params, "lr": self.config.resolved_gate_lr()}
+                )
         if not groups:
             raise TrainingError("no trainable parameters for the optimizer")
         return torch.optim.AdamW(groups)
@@ -606,8 +620,13 @@ def _causal_meta(causal_model: nn.Module) -> dict:
     }
 
 
-def _gate_meta(gates: VariableGates | None) -> dict:
-    """JSON-serializable hyperparameters needed to rebuild a gates module."""
+def _gate_meta(gates: VariableGates | None, config: JointConfig) -> dict:
+    """JSON-serializable hyperparameters needed to rebuild a gates module.
+
+    ``gate_init``/``gate_lr`` record the optimization knobs used for this run
+    (``log_alpha`` itself is restored from the gate state dict, so ``gate_init``
+    is informational for reconstruction/reproducibility).
+    """
     if gates is None:
         return {"present": False}
     return {
@@ -616,6 +635,8 @@ def _gate_meta(gates: VariableGates | None) -> dict:
         "beta": gates.beta,
         "gamma": gates.gamma,
         "zeta": gates.zeta,
+        "gate_init": config.gate_init,
+        "gate_lr": config.gate_lr,
     }
 
 
@@ -655,7 +676,7 @@ def save_checkpoint(
         "rotation_frozen": rotation.frozen,
         "layout": _layout_meta(layout),
         "causal": _causal_meta(causal_model),
-        "gates": _gate_meta(gates),
+        "gates": _gate_meta(gates, config),
         "config": asdict(config) if is_dataclass(config) else dict(config),
         "extra": extra or {},
     }
@@ -766,8 +787,12 @@ def load_checkpoint(
 
     gates = None
     if has_gates:
+        # Older gated checkpoints predate gate_init/gate_lr; default them.  The
+        # log_alpha values are restored from the state dict below, so init only
+        # affects the pre-load parameter values (immediately overwritten).
         gates = VariableGates(
             gate_meta["k_max"],
+            init=gate_meta.get("gate_init", 2.0),
             beta=gate_meta["beta"],
             gamma=gate_meta["gamma"],
             zeta=gate_meta["zeta"],

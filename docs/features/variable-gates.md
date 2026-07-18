@@ -33,6 +33,36 @@ penalty has nonzero gradient whenever a gate is not fully saturated, and the
 stretch `(gamma, zeta)` lets gates reach *exactly* 0/1 while log_alpha keeps
 receiving gradient through the sample distribution.
 
+## Gate optimization
+
+Gates need their **own learning rate** and a **configurable init**, because the
+gate parameters live on a very different scale from `Q`/boundaries/`H`.
+
+- **Adam speed limit (the failure mode).** Adam's update is bounded by roughly
+  `±lr` per step (the moment ratio `m/√v` saturates near ±1). With the default
+  `lr=1e-3` and 800–1500 steps, `log_alpha` (init `+2.0`) can move at most
+  ~`lr*steps`, nowhere near the `≈ -0.4` threshold where `g_det` crosses 0.5
+  and a gate goes dead. In the LM runs this made `lambda_gate` inert:
+  `g_det`/`gated_k` trajectories were near-identical for `lambda_gate ∈ {0,
+  0.2}` — the penalty had a gradient, but the optimizer could not act on it fast
+  enough. This is *not* gradient death (contrast the Night-2 width clamp); it is
+  an optimizer-step-size limit.
+- **Two knobs** (`JointConfig`, both threaded from `--gate-lr`/`--gate-init` in
+  `run_phase_a.py`/`run_phase_b.py` and recorded in the result JSON + checkpoint
+  meta):
+  - `gate_lr: float | None = None` — a dedicated learning rate for the gate
+    param group (`None` falls back to `config.lr`). The trainer puts gate
+    params in their own optimizer group so this lr applies only to them. A value
+    like `0.05` lets a gate travel `+2.0 → -0.4` in a few tens of steps, so the
+    L0 penalty can actually close gates.
+  - `gate_init: float = 2.0` — the initial `log_alpha`. Lower it (or set it
+    negative, e.g. `-1.0`) to start gates near/below the live threshold when you
+    want closing to be the default rather than the exception.
+- **Checkpoints.** `gate_init`/`gate_lr` are stored in the checkpoint gate meta;
+  pre-existing gated checkpoints without these keys still load (they default to
+  `2.0`/`None`). `log_alpha` itself is restored from the state dict, so
+  `gate_init` is informational on reload.
+
 ## Coupling (both sides must see the same gate)
 
 - **N-side (subspace)**: effective width `w_eff_i = g_i * w_i` is used to build
@@ -66,11 +96,12 @@ and must not be the only thing evaluated (see metrics).
 - `src/jdas/causal_model.py` — learned models accept optional gates; value
   masking with straight-through hard gate.
 - `src/jdas/training.py` — `JointConfig.lambda_gate` (default 0.0) +
-  `use_gates`; L_gate term; gates included in checkpoints; gate stats in
-  history.
+  `use_gates`; `gate_lr`/`gate_init` optimization knobs (separate optimizer
+  param group for gates); L_gate term; gates included in checkpoints; gate stats
+  in history.
 - `src/jdas/eval.py` — live-restricted IIA variant; `gated_k`.
 - `experiments/run_phase_a.py`, `experiments/run_phase_b.py` — `--gates`,
-  `--lambda-gate`, gate metrics in result JSON.
+  `--lambda-gate`, `--gate-lr`, `--gate-init`, gate metrics in result JSON.
 
 ## Implementation notes (deviations from the sketch above)
 

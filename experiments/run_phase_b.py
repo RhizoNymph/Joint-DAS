@@ -68,6 +68,8 @@ def _build_config(args: argparse.Namespace) -> JointConfig:
         sparse_mode=args.sparse_mode,
         use_gates=args.gates,
         lambda_gate=args.lambda_gate,
+        gate_lr=args.gate_lr,
+        gate_init=args.gate_init,
     )
 
 
@@ -198,6 +200,18 @@ def main() -> None:
         help="weight of the L0 gate penalty (0 = parameterization control)",
     )
     parser.add_argument(
+        "--gate-lr",
+        type=float,
+        default=None,
+        help="dedicated learning rate for gate params (None = use --lr)",
+    )
+    parser.add_argument(
+        "--gate-init",
+        type=float,
+        default=2.0,
+        help="initial log_alpha for every gate (+2.0 ~= 0.88 open)",
+    )
+    parser.add_argument(
         "--max-width",
         type=float,
         default=None,
@@ -283,7 +297,7 @@ def main() -> None:
                 v=args.v,
                 n_labels=task.n_labels,
             )
-            gates = VariableGates(k_max) if args.gates else None
+            gates = VariableGates(k_max, init=args.gate_init) if args.gates else None
             trainer = JointTrainer(
                 site, task, causal_model, rotation, layout, config, gates=gates
             )

@@ -43,9 +43,15 @@ class VariableGates(nn.Module):
     ----------
     k_max:
         Number of variable slots (gates).
-    init_log_alpha:
+    init:
         Initial value of every ``log_alpha`` (default ``+2.0`` ~= 0.88 open, so
-        training starts with all variables available).
+        training starts with all variables available).  A value below ``-0.4``
+        (roughly) starts gates *closed* (``g_det <= 0.5``); the gate learning
+        rate (see :class:`jdas.training.JointConfig`) controls how fast this
+        moves during training.
+    init_log_alpha:
+        Deprecated alias for ``init`` (kept so existing callers/tests keep
+        working).  If given, it overrides ``init``.
     beta, gamma, zeta:
         Hard-concrete constants (defaults per the spec: ``2/3``, ``-0.1``,
         ``1.1``).  ``gamma < 0 < zeta`` and ``zeta > 1`` give the stretch that
@@ -56,7 +62,8 @@ class VariableGates(nn.Module):
         self,
         k_max: int,
         *,
-        init_log_alpha: float = 2.0,
+        init: float = 2.0,
+        init_log_alpha: float | None = None,
         beta: float = 2.0 / 3.0,
         gamma: float = -0.1,
         zeta: float = 1.1,
@@ -72,7 +79,8 @@ class VariableGates(nn.Module):
         self.beta = float(beta)
         self.gamma = float(gamma)
         self.zeta = float(zeta)
-        self.log_alpha = nn.Parameter(torch.full((k_max,), float(init_log_alpha)))
+        init_value = init if init_log_alpha is None else init_log_alpha
+        self.log_alpha = nn.Parameter(torch.full((k_max,), float(init_value)))
 
     # -- sampling ---------------------------------------------------------
 
