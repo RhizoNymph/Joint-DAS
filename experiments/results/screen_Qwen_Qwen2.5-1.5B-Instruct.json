@@ -1,0 +1,114 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "n": 300,
+  "results": [
+    {
+      "template_id": 0,
+      "chat": false,
+      "accuracy": 0.29333333333333333,
+      "per_region": {
+        "below": 0.0,
+        "inside": 1.0,
+        "above": 0.0
+      },
+      "frac_yes_pred": 1.0,
+      "n": 300
+    },
+    {
+      "template_id": 0,
+      "chat": true,
+      "accuracy": 0.7133333333333334,
+      "per_region": {
+        "below": 1.0,
+        "inside": 0.022727272727272728,
+        "above": 1.0
+      },
+      "frac_yes_pred": 0.006666666666666667,
+      "n": 300
+    },
+    {
+      "template_id": 1,
+      "chat": false,
+      "accuracy": 0.7933333333333333,
+      "per_region": {
+        "below": 0.99,
+        "inside": 0.5454545454545454,
+        "above": 0.8125
+      },
+      "frac_yes_pred": 0.23333333333333334,
+      "n": 300
+    },
+    {
+      "template_id": 1,
+      "chat": true,
+      "accuracy": 0.72,
+      "per_region": {
+        "below": 0.94,
+        "inside": 0.9659090909090909,
+        "above": 0.33035714285714285
+      },
+      "frac_yes_pred": 0.5533333333333333,
+      "n": 300
+    },
+    {
+      "template_id": 2,
+      "chat": false,
+      "accuracy": 0.29333333333333333,
+      "per_region": {
+        "below": 0.0,
+        "inside": 1.0,
+        "above": 0.0
+      },
+      "frac_yes_pred": 1.0,
+      "n": 300
+    },
+    {
+      "template_id": 2,
+      "chat": true,
+      "accuracy": 0.7766666666666666,
+      "per_region": {
+        "below": 0.75,
+        "inside": 0.5909090909090909,
+        "above": 0.9464285714285714
+      },
+      "frac_yes_pred": 0.27666666666666667,
+      "n": 300
+    },
+    {
+      "template_id": 3,
+      "chat": false,
+      "accuracy": 0.81,
+      "per_region": {
+        "below": 0.79,
+        "inside": 0.7159090909090909,
+        "above": 0.9017857142857143
+      },
+      "frac_yes_pred": 0.31666666666666665,
+      "n": 300
+    },
+    {
+      "template_id": 3,
+      "chat": true,
+      "accuracy": 0.78,
+      "per_region": {
+        "below": 0.9,
+        "inside": 0.375,
+        "above": 0.9910714285714286
+      },
+      "frac_yes_pred": 0.14666666666666667,
+      "n": 300
+    }
+  ],
+  "best": {
+    "template_id": 3,
+    "chat": false,
+    "accuracy": 0.81,
+    "per_region": {
+      "below": 0.79,
+      "inside": 0.7159090909090909,
+      "above": 0.9017857142857143
+    },
+    "frac_yes_pred": 0.31666666666666665,
+    "n": 300
+  }
+}

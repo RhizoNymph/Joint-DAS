@@ -1,0 +1,591 @@
+{
+  "config": {
+    "task": "boolean_comp",
+    "method": "joint",
+    "site_layer": 1,
+    "seed": 2,
+    "device": "cuda",
+    "steps": 1500,
+    "batch_size": 64,
+    "n_sources": 2,
+    "lr": 0.001,
+    "k_max": 4,
+    "v": 2,
+    "gates": true,
+    "lambda_gate": 0.1,
+    "gate_lr": 0.05,
+    "gate_init": 2.0,
+    "gate_warmup": 300,
+    "gate_lambda_ramp": 300,
+    "gate_clamp": 3.0,
+    "out": "experiments/results/night3/gates_toy_v3/bool_l1_lg0.1_s2.json"
+  },
+  "config_dataclass": {
+    "steps": 1500,
+    "batch_size": 64,
+    "n_sources": 2,
+    "lr": 0.001,
+    "lr_rotation": null,
+    "lr_causal": null,
+    "lambda_task": 1.0,
+    "lambda_sparse": 0.1,
+    "use_gates": true,
+    "lambda_gate": 0.1,
+    "gate_lr": 0.05,
+    "gate_init": 2.0,
+    "gate_warmup_steps": 300,
+    "gate_lambda_ramp_steps": 300,
+    "gate_clamp": 3.0,
+    "sparse_mode": "normalized",
+    "lambda_cf_symmetric": 0.5,
+    "gumbel_temp_start": 1.0,
+    "gumbel_temp_end": 0.1,
+    "mask_temp_start": 1.0,
+    "mask_temp_end": 0.1,
+    "anneal": "linear",
+    "swap_sizes": [
+      1,
+      2
+    ],
+    "swap_weights": [
+      0.5,
+      0.5
+    ],
+    "eval_every": 150,
+    "eval_batches": 4,
+    "eval_batch_size": 64,
+    "seed": 2,
+    "device": "cuda",
+    "freeze_rotation": false
+  },
+  "recovery_matrix": [
+    [
+      0.634765625,
+      0.87109375
+    ],
+    [
+      0.634765625,
+      0.87109375
+    ],
+    [
+      0.634765625,
+      0.87109375
+    ],
+    [
+      0.634765625,
+      0.87109375
+    ]
+  ],
+  "best_assignment": [
+    0,
+    1
+  ],
+  "recovery_score": 0.7529296875,
+  "refit_iia_1": 1.0,
+  "refit_iia_2": 1.0,
+  "history": [
+    {
+      "step": 0,
+      "loss_total": 6.582486152648926,
+      "loss_cf": 4.938199043273926,
+      "loss_cf_sym": 0.6484792828559875,
+      "loss_task": 1.2700471878051758,
+      "loss_sparse": 0.5,
+      "tau_gumbel": 1.0,
+      "tau_mask": 1.0,
+      "gate_phase": "warmup",
+      "lambda_gate_eff": 0.0,
+      "iia_1": 0.64453125,
+      "iia_2": 0.5859375,
+      "effective_k": 0,
+      "aligned_dims": 128.00271606445312,
+      "hard_widths": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "gated_k": 4,
+      "g_det": [
+        0.957,
+        0.957,
+        0.957,
+        0.957
+      ],
+      "live_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "hard_widths_gated": [
+        31,
+        30,
+        31,
+        30
+      ],
+      "iia_1_live": 0.58203125,
+      "iia_2_live": 0.61328125
+    },
+    {
+      "step": 150,
+      "loss_total": 0.474827378988266,
+      "loss_cf": 0.2550438642501831,
+      "loss_cf_sym": 0.25575900077819824,
+      "loss_task": 0.041960202157497406,
+      "loss_sparse": 0.49943816661834717,
+      "tau_gumbel": 0.9099399599733156,
+      "tau_mask": 0.9099399447441101,
+      "gate_phase": "warmup",
+      "lambda_gate_eff": 0.0,
+      "iia_1": 0.9609375,
+      "iia_2": 0.90625,
+      "effective_k": 2,
+      "aligned_dims": 127.85552978515625,
+      "hard_widths": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "gated_k": 4,
+      "g_det": [
+        0.957,
+        0.957,
+        0.957,
+        0.957
+      ],
+      "live_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "hard_widths_gated": [
+        31,
+        30,
+        31,
+        30
+      ],
+      "iia_1_live": 0.96875,
+      "iia_2_live": 0.89453125
+    },
+    {
+      "step": 300,
+      "loss_total": 0.06406782567501068,
+      "loss_cf": 0.0017127824248746037,
+      "loss_cf_sym": 0.01297052949666977,
+      "loss_task": 0.006015802267938852,
+      "loss_sparse": 0.4985398054122925,
+      "tau_gumbel": 0.8198799199466311,
+      "tau_mask": 0.819879949092865,
+      "gate_phase": "ramp",
+      "lambda_gate_eff": 0.0,
+      "loss_gate": 3.8934664726257324,
+      "iia_1": 0.9609375,
+      "iia_2": 0.97265625,
+      "effective_k": 1,
+      "aligned_dims": 127.62503051757812,
+      "hard_widths": [
+        32,
+        32,
+        32,
+        32
+      ],
+      "gated_k": 4,
+      "g_det": [
+        0.9568,
+        0.9568,
+        0.9568,
+        0.9568
+      ],
+      "live_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "hard_widths_gated": [
+        31,
+        30,
+        31,
+        30
+      ],
+      "iia_1_live": 0.9375,
+      "iia_2_live": 0.8671875
+    },
+    {
+      "step": 450,
+      "loss_total": 0.24470356106758118,
+      "loss_cf": 1.1175870007207322e-08,
+      "loss_cf_sym": 0.0035436342004686594,
+      "loss_task": 0.0001843617355916649,
+      "loss_sparse": 0.4846162497997284,
+      "tau_gumbel": 0.7298198799199467,
+      "tau_mask": 0.7298198938369751,
+      "gate_phase": "ramp",
+      "lambda_gate_eff": 0.05,
+      "loss_gate": 3.885714530944824,
+      "iia_1": 1.0,
+      "iia_2": 1.0,
+      "effective_k": 1,
+      "aligned_dims": 127.474365234375,
+      "hard_widths": [
+        32,
+        32,
+        32,
+        31
+      ],
+      "gated_k": 4,
+      "g_det": [
+        1.0,
+        0.9288,
+        0.9894,
+        0.8463
+      ],
+      "live_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "hard_widths_gated": [
+        32,
+        29,
+        32,
+        27
+      ],
+      "iia_1_live": 1.0,
+      "iia_2_live": 1.0
+    },
+    {
+      "step": 600,
+      "loss_total": 0.41678088903427124,
+      "loss_cf": -0.0,
+      "loss_cf_sym": 0.001017267000861466,
+      "loss_task": 0.00015787480515427887,
+      "loss_sparse": 0.3351433575153351,
+      "tau_gumbel": 0.6397598398932622,
+      "tau_mask": 0.6397598385810852,
+      "gate_phase": "active",
+      "lambda_gate_eff": 0.1,
+      "loss_gate": 3.826000213623047,
+      "iia_1": 1.0,
+      "iia_2": 1.0,
+      "effective_k": 1,
+      "aligned_dims": 127.27153015136719,
+      "hard_widths": [
+        32,
+        32,
+        31,
+        32
+      ],
+      "gated_k": 4,
+      "g_det": [
+        1.0,
+        0.9276,
+        0.9482,
+        0.6622
+      ],
+      "live_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "hard_widths_gated": [
+        32,
+        29,
+        31,
+        21
+      ],
+      "iia_1_live": 1.0,
+      "iia_2_live": 1.0
+    },
+    {
+      "step": 750,
+      "loss_total": 0.3835853934288025,
+      "loss_cf": -0.0,
+      "loss_cf_sym": 0.000407912622904405,
+      "loss_task": 5.3404830396175385e-05,
+      "loss_sparse": 0.3621950149536133,
+      "tau_gumbel": 0.5496997998665777,
+      "tau_mask": 0.5496997833251953,
+      "gate_phase": "active",
+      "lambda_gate_eff": 0.1,
+      "loss_gate": 3.4710850715637207,
+      "iia_1": 1.0,
+      "iia_2": 1.0,
+      "effective_k": 1,
+      "aligned_dims": 127.06109619140625,
+      "hard_widths": [
+        32,
+        32,
+        31,
+        32
+      ],
+      "gated_k": 3,
+      "g_det": [
+        1.0,
+        0.9068,
+        0.9361,
+        0.1339
+      ],
+      "live_indices": [
+        0,
+        1,
+        2
+      ],
+      "hard_widths_gated": [
+        32,
+        29,
+        29,
+        0
+      ],
+      "iia_1_live": 1.0,
+      "iia_2_live": 1.0
+    },
+    {
+      "step": 900,
+      "loss_total": 0.34974849224090576,
+      "loss_cf": -0.0,
+      "loss_cf_sym": 0.0003544838400557637,
+      "loss_task": 8.993754818220623e-06,
+      "loss_sparse": 0.40849819779396057,
+      "tau_gumbel": 0.45963975983989325,
+      "tau_mask": 0.4596397578716278,
+      "gate_phase": "active",
+      "lambda_gate_eff": 0.1,
+      "loss_gate": 3.0871243476867676,
+      "iia_1": 1.0,
+      "iia_2": 1.0,
+      "effective_k": 1,
+      "aligned_dims": 126.86136627197266,
+      "hard_widths": [
+        32,
+        31,
+        32,
+        32
+      ],
+      "gated_k": 3,
+      "g_det": [
+        1.0,
+        1.0,
+        0.7246,
+        0.0
+      ],
+      "live_indices": [
+        0,
+        1,
+        2
+      ],
+      "hard_widths_gated": [
+        32,
+        31,
+        23,
+        0
+      ],
+      "iia_1_live": 1.0,
+      "iia_2_live": 1.0
+    },
+    {
+      "step": 1050,
+      "loss_total": 0.31393617391586304,
+      "loss_cf": -0.0,
+      "loss_cf_sym": 2.35378847719403e-05,
+      "loss_task": 3.39360922225751e-05,
+      "loss_sparse": 0.2561253607273102,
+      "tau_gumbel": 0.3695797198132088,
+      "tau_mask": 0.3695797324180603,
+      "gate_phase": "active",
+      "lambda_gate_eff": 0.1,
+      "loss_gate": 2.882779121398926,
+      "iia_1": 1.0,
+      "iia_2": 1.0,
+      "effective_k": 1,
+      "aligned_dims": 126.65814208984375,
+      "hard_widths": [
+        32,
+        31,
+        32,
+        32
+      ],
+      "gated_k": 2,
+      "g_det": [
+        1.0,
+        0.9917,
+        0.2985,
+        0.0
+      ],
+      "live_indices": [
+        0,
+        1
+      ],
+      "hard_widths_gated": [
+        32,
+        31,
+        0,
+        0
+      ],
+      "iia_1_live": 1.0,
+      "iia_2_live": 1.0
+    },
+    {
+      "step": 1200,
+      "loss_total": 0.2598993182182312,
+      "loss_cf": -0.0,
+      "loss_cf_sym": 0.00015706669364590198,
+      "loss_task": 3.6833766898780596e-06,
+      "loss_sparse": 0.2408197820186615,
+      "tau_gumbel": 0.27951967978652437,
+      "tau_mask": 0.2795196771621704,
+      "gate_phase": "active",
+      "lambda_gate_eff": 0.1,
+      "loss_gate": 2.357351303100586,
+      "iia_1": 1.0,
+      "iia_2": 1.0,
+      "effective_k": 1,
+      "aligned_dims": 126.46109008789062,
+      "hard_widths": [
+        32,
+        31,
+        32,
+        31
+      ],
+      "gated_k": 2,
+      "g_det": [
+        1.0,
+        0.9506,
+        0.0,
+        0.0
+      ],
+      "live_indices": [
+        0,
+        1
+      ],
+      "hard_widths_gated": [
+        32,
+        30,
+        0,
+        0
+      ],
+      "iia_1_live": 1.0,
+      "iia_2_live": 1.0
+    },
+    {
+      "step": 1350,
+      "loss_total": 0.26209157705307007,
+      "loss_cf": -0.0,
+      "loss_cf_sym": 0.00022232312767300755,
+      "loss_task": 2.8945460144313984e-06,
+      "loss_sparse": 0.2466759979724884,
+      "tau_gumbel": 0.18945963975983993,
+      "tau_mask": 0.1894596368074417,
+      "gate_phase": "active",
+      "lambda_gate_eff": 0.1,
+      "loss_gate": 2.3730990886688232,
+      "iia_1": 1.0,
+      "iia_2": 1.0,
+      "effective_k": 1,
+      "aligned_dims": 126.28848266601562,
+      "hard_widths": [
+        32,
+        31,
+        32,
+        31
+      ],
+      "gated_k": 2,
+      "g_det": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "live_indices": [
+        0,
+        1
+      ],
+      "hard_widths_gated": [
+        32,
+        31,
+        0,
+        0
+      ],
+      "iia_1_live": 1.0,
+      "iia_2_live": 1.0
+    },
+    {
+      "step": 1499,
+      "loss_total": 0.261645644903183,
+      "loss_cf": -0.0,
+      "loss_cf_sym": 9.500246960669756e-05,
+      "loss_task": 1.3820822459820192e-06,
+      "loss_sparse": 0.24628975987434387,
+      "tau_gumbel": 0.09999999999999998,
+      "tau_mask": 0.10000000149011612,
+      "gate_phase": "active",
+      "lambda_gate_eff": 0.1,
+      "loss_gate": 2.369677782058716,
+      "iia_1": 1.0,
+      "iia_2": 1.0,
+      "effective_k": 1,
+      "aligned_dims": 126.09339904785156,
+      "hard_widths": [
+        32,
+        31,
+        32,
+        31
+      ],
+      "gated_k": 2,
+      "g_det": [
+        1.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "live_indices": [
+        0,
+        1
+      ],
+      "hard_widths_gated": [
+        32,
+        31,
+        0,
+        0
+      ],
+      "iia_1_live": 1.0,
+      "iia_2_live": 1.0
+    }
+  ],
+  "final": {
+    "iia_1": 1.0,
+    "iia_2": 1.0,
+    "effective_k": 1,
+    "aligned_dims": 126.09339904785156,
+    "hard_widths": [
+      32,
+      31,
+      32,
+      31
+    ],
+    "gated_k": 2,
+    "g_det": [
+      1.0,
+      1.0,
+      0.0,
+      0.0
+    ],
+    "live_indices": [
+      0,
+      1
+    ],
+    "hard_widths_gated": [
+      32,
+      31,
+      0,
+      0
+    ],
+    "iia_1_live": 1.0,
+    "iia_2_live": 1.0
+  }
+}

@@ -1,0 +1,107 @@
+Overview:
+  description: >
+    Research codebase for Joint-DAS: an extension of Distributed Alignment
+    Search that learns the high-level causal model jointly with the orthogonal
+    rotation/alignment, instead of requiring a hand-proposed causal model.
+    See docs/DESIGN.md for the method.
+  subsystems:
+    - jdas core (src/jdas): rotation + subspace masks, learned causal model,
+      interchange intervention machinery, joint/DAS trainers, evaluation.
+    - tasks (src/jdas/tasks): synthetic tasks with known ground-truth causal
+      structure + LM prompt tasks; counterfactual pair generators.
+    - models (src/jdas/models): toy networks (MLP/transformer) and their
+      training; HF model wrappers for Phase B.
+    - unified CLI (src/jdas/cli): single `jdas` entry point for everything —
+      single runs (`jdas run toy|lm|search|seed-study`), analysis
+      (`jdas analyze gates|toy|capped-lm|seed-basis|search|falsification`),
+      declarative sweeps (`jdas sweep run|status|collect` over
+      experiments/sweeps/*.toml), and cluster ops
+      (`jdas cluster sync|status|exec|kill`). Environment specifics (hosts,
+      remote paths, uv path, HF env vars, default model) live in jdas.toml
+      (frozen EnvConfig, tomllib), never in code.
+    - experiments (experiments/): the run logic lives entirely in
+      src/jdas/cli/runners.py (toy/lm/search/seed-study; `jdas run ...` is the
+      sole interface). Other modules stay standalone: screen_lm.py (template
+      screening), introspect_toy.py (variable-hypothesis agreement), and the
+      analyzers analyze_toy_lm.py / analyze_studies.py / analyze_gates.py
+      (aggregate JSON -> summary md + docs/assets plots; analyze_gates.py
+      handles the night-3 hard-concrete gate sweeps, robust to partial/mid-sweep
+      directories). The toy-model "science" tooling (seed-study basis variance,
+      search brute-force candidate-pair enumeration, the das_wrong_and
+      falsification baseline) all shares src/jdas/hypotheses.py (boolean fn
+      library + solution classifier). GPU-node grids are expressed as sweep
+      specs under experiments/sweeps/.
+  data_flow: >
+    Task generates (base, sources, intervention-spec, labels) batches →
+    intervention machinery runs frozen network N with rotated-subspace swaps →
+    trainer compares N's intervened output with learned causal model H's
+    counterfactual prediction (L_cf) + H's task fit (L_task) → gradients update
+    rotation Q, subspace boundaries, and H's parameters. Eval computes held-out
+    IIA and recovery of ground-truth variables.
+
+Features Index:
+  jdas_core:
+    description: Rotation, learned causal model, interventions, trainers, eval.
+    entry_points: [src/jdas/rotation.py, src/jdas/causal_model.py,
+      src/jdas/intervention.py, src/jdas/training.py, src/jdas/eval.py,
+      src/jdas/cli/runners.py]
+    depends_on: []
+    doc: docs/features/jdas_core.md
+  toy_tasks:
+    description: Synthetic ground-truth tasks + toy model training (Phase A).
+    entry_points: [src/jdas/tasks/, src/jdas/models/]
+    depends_on: [jdas_core]
+    doc: docs/features/toy_tasks.md
+  lm_phase:
+    description: >
+      Phase B on a small HF LM (price tagging task). Screened Qwen2.5-1.5B-Instruct
+      (0.5B was degenerate) at template 3 plain, ~81% zero-shot; runs at layer 17.
+      Night 2: collapse mechanism fixed via per-dim sparsity + hard width cap
+      (`jdas run lm` flags --sparse-mode per_dim / --max-width / --init-width);
+      capped joint (k_eff 4, iia_1 0.855) beats the capped control (k_eff 0).
+    entry_points: [src/jdas/tasks/price_tagging.py, src/jdas/models/hf.py,
+      src/jdas/cli/runners.py, experiments/screen_lm.py]
+    depends_on: [jdas_core]
+    doc: docs/features/lm_phase.md
+  variable_gates:
+    description: >
+      Per-variable hard-concrete (L0) gates for the joint method: an intrinsic
+      Occam mechanism that learns the number of *live* causal variables rather
+      than fixing it at k_max. One stochastic gate per variable slot; the SAME
+      gate sample scales N-side subspace widths (w_eff = g*w) and masks H-side
+      variable values (straight-through hard gate) within one forward, so a dead
+      variable is a no-op on both sides. Gate penalty lambda_gate*L0 is added to
+      the loss. Eval adds live-restricted IIA (iia_1_live/iia_2_live) and
+      gated_k. Enabled via `jdas run toy|lm` --gates --lambda-gate; applies only
+      to joint / random_rotation.
+    entry_points: [src/jdas/gates.py, src/jdas/rotation.py,
+      src/jdas/causal_model.py, src/jdas/training.py, src/jdas/eval.py,
+      src/jdas/cli/runners.py]
+    depends_on: [jdas_core]
+    doc: docs/features/variable-gates.md
+  toy_model_science:
+    description: >
+      Night-2 measurement tooling over the two GT boolean atoms: seed/basis
+      variance study (`jdas run seed-study`), brute-force discrete search
+      baseline (`jdas run search`), and the k=2 wrong-composition
+      (das_wrong_and) falsification with analytic agreement ceilings. Establishes
+      basis non-identifiability (E1+E2 not a valid alignment at deep sites) from
+      two independent methods.
+    entry_points: [src/jdas/cli/runners.py, src/jdas/hypotheses.py,
+      experiments/introspect_toy.py]
+    depends_on: [jdas_core, toy_tasks]
+    doc: docs/features/jdas_core.md
+  unified_cli:
+    description: >
+      Single `jdas` CLI (run/analyze/sweep/cluster) replacing the per-experiment
+      python scripts and per-night bash drivers. Env config (hosts, remote
+      paths, uv path, HF env vars, default model) in jdas.toml with
+      jdas.local.toml override. Declarative sweep specs (experiments/sweeps/)
+      re-express the night-1/2/3 grids: deterministic cartesian/zipped expansion,
+      skip-existing resume, round-robin host assignment, generated detached
+      ssh drivers.
+    entry_points: [src/jdas/cli/__init__.py, src/jdas/cli/config.py,
+      src/jdas/cli/runners.py, src/jdas/cli/sweeps.py, src/jdas/cli/cluster.py,
+      src/jdas/cli/analyze.py, jdas.toml, experiments/sweeps/]
+    depends_on: [jdas_core, toy_tasks, lm_phase, variable_gates, toy_model_science]
+    doc: docs/features/unified-cli.md

@@ -1,0 +1,22 @@
+# Environment config for the `jdas` CLI (checked in, non-secret).
+# Precedence: --config PATH > JDAS_CONFIG env var > jdas.local.toml (gitignored) > jdas.toml
+# See docs/features/unified-cli.md.
+
+[cluster]
+hosts = ["node0", "node1", "node2"]              # ssh destinations (aliases or user@host)
+remote_dir = "Code/ai/learning-causal-representations"  # relative to remote $HOME
+uv_path = "~/.local/bin/uv"
+
+[cluster.env]                                     # exported before every remote command
+HF_HOME = "$HOME/hf-cache"
+HF_HUB_OFFLINE = "1"
+HF_HUB_DISABLE_XET = "1"
+
+[paths]                                           # all relative to repo root
+results = "experiments/results"
+logs = "experiments/logs"
+ckpts = "experiments/ckpts"
+toy_ckpts = "experiments/toy_ckpts"
+
+[models]
+lm_default = "Qwen/Qwen2.5-1.5B-Instruct"

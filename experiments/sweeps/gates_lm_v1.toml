@@ -1,0 +1,39 @@
+# Night-3 LM gate sweep v1: capped recipe + hard-concrete gates on
+# Qwen2.5-1.5B l17.  7 runs (control lg0 only at seed 0).
+# Reconstructed from scripts/gates_lm_node{0,1,2}.sh (and scripts/launch_gates_lm.sh).
+# The (lambda_gate, seed) pairs are enumerated explicitly because lg0 has only
+# one seed, so this is not a full cartesian grid.
+
+[sweep]
+name = "gates_lm_v1"
+runner = "lm"
+out_dir = "night3/gates_lm"
+out_pattern = "pt_gates_l17_lg{lambda_gate}_s{seed}.json"
+
+[grid]
+"lambda_gate+seed" = [
+  [0, 0],
+  [0.01, 0],
+  [0.01, 1],
+  [0.05, 0],
+  [0.05, 1],
+  [0.2, 0],
+  [0.2, 1],
+]
+
+[fixed]
+method = "joint"
+model = "Qwen/Qwen2.5-1.5B-Instruct"
+layer = 17
+template_id = 3
+device = "cuda"
+steps = 800
+batch_size = 32
+k_max = 4
+max_width = 128
+init_width = 32
+sparse_mode = "per_dim"
+lambda_sparse = 0.02
+gates = true
+no_refit = true
+local_files_only = true

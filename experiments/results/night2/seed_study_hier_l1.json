@@ -1,0 +1,469 @@
+{
+  "config": {
+    "task": "hierarchical_equality",
+    "site_layer": 1,
+    "seeds": 10,
+    "steps": 4000,
+    "k_max": 4,
+    "v": 2,
+    "device": "cuda",
+    "n_probe": 4096
+  },
+  "per_seed": [
+    {
+      "seed": 0,
+      "classification": "other",
+      "live_idx": [
+        0,
+        1,
+        2
+      ],
+      "live_fns": [
+        {
+          "var": 0,
+          "effect_rate": 0.2275,
+          "fn": "notB",
+          "fn_agreement": 0.9976
+        },
+        {
+          "var": 1,
+          "effect_rate": 0.2417,
+          "fn": "A",
+          "fn_agreement": 0.9985
+        },
+        {
+          "var": 2,
+          "effect_rate": 0.3101,
+          "fn": "AND",
+          "fn_agreement": 0.9995
+        }
+      ],
+      "effect_rates": [
+        0.2275,
+        0.2417,
+        0.3101,
+        0.0
+      ],
+      "iia_1": 0.984375,
+      "iia_2": 0.97265625,
+      "effective_k": 3,
+      "hard_widths": [
+        31,
+        31,
+        30,
+        30
+      ],
+      "recovery_score": 0.9941
+    },
+    {
+      "seed": 1,
+      "classification": "other",
+      "live_idx": [
+        1,
+        2
+      ],
+      "live_fns": [
+        {
+          "var": 1,
+          "effect_rate": 0.2954,
+          "fn": "OR",
+          "fn_agreement": 0.9839
+        },
+        {
+          "var": 2,
+          "effect_rate": 0.311,
+          "fn": "NAND",
+          "fn_agreement": 1.0
+        }
+      ],
+      "effect_rates": [
+        0.0,
+        0.2954,
+        0.311,
+        0.001
+      ],
+      "iia_1": 0.98828125,
+      "iia_2": 0.9921875,
+      "effective_k": 2,
+      "hard_widths": [
+        31,
+        31,
+        30,
+        31
+      ],
+      "recovery_score": 0.7549
+    },
+    {
+      "seed": 2,
+      "classification": "other",
+      "live_idx": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "live_fns": [
+        {
+          "var": 0,
+          "effect_rate": 0.1348,
+          "fn": "A",
+          "fn_agreement": 0.998
+        },
+        {
+          "var": 1,
+          "effect_rate": 0.1929,
+          "fn": "B",
+          "fn_agreement": 0.9963
+        },
+        {
+          "var": 2,
+          "effect_rate": 0.2944,
+          "fn": "AND",
+          "fn_agreement": 0.9993
+        },
+        {
+          "var": 3,
+          "effect_rate": 0.0332,
+          "fn": "OR",
+          "fn_agreement": 0.8696
+        }
+      ],
+      "effect_rates": [
+        0.1348,
+        0.1929,
+        0.2944,
+        0.0332
+      ],
+      "iia_1": 0.953125,
+      "iia_2": 0.97265625,
+      "effective_k": 4,
+      "hard_widths": [
+        31,
+        30,
+        31,
+        30
+      ],
+      "recovery_score": 0.9951
+    },
+    {
+      "seed": 3,
+      "classification": "other",
+      "live_idx": [
+        0,
+        1,
+        2
+      ],
+      "live_fns": [
+        {
+          "var": 0,
+          "effect_rate": 0.0645,
+          "fn": "NOR",
+          "fn_agreement": 0.9602
+        },
+        {
+          "var": 1,
+          "effect_rate": 0.1235,
+          "fn": "OR",
+          "fn_agreement": 0.9524
+        },
+        {
+          "var": 2,
+          "effect_rate": 0.3179,
+          "fn": "AND",
+          "fn_agreement": 0.9995
+        }
+      ],
+      "effect_rates": [
+        0.0645,
+        0.1235,
+        0.3179,
+        0.0
+      ],
+      "iia_1": 0.9375,
+      "iia_2": 0.93359375,
+      "effective_k": 3,
+      "hard_widths": [
+        31,
+        31,
+        31,
+        30
+      ],
+      "recovery_score": 0.7676
+    },
+    {
+      "seed": 4,
+      "classification": "other",
+      "live_idx": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "live_fns": [
+        {
+          "var": 0,
+          "effect_rate": 0.1104,
+          "fn": "A",
+          "fn_agreement": 0.9836
+        },
+        {
+          "var": 1,
+          "effect_rate": 0.1245,
+          "fn": "notA",
+          "fn_agreement": 0.9973
+        },
+        {
+          "var": 2,
+          "effect_rate": 0.0723,
+          "fn": "notA",
+          "fn_agreement": 0.71
+        },
+        {
+          "var": 3,
+          "effect_rate": 0.2437,
+          "fn": "B",
+          "fn_agreement": 0.9985
+        }
+      ],
+      "effect_rates": [
+        0.1104,
+        0.1245,
+        0.0723,
+        0.2437
+      ],
+      "iia_1": 0.87109375,
+      "iia_2": 0.796875,
+      "effective_k": 4,
+      "hard_widths": [
+        31,
+        31,
+        31,
+        31
+      ],
+      "recovery_score": 1.0
+    },
+    {
+      "seed": 5,
+      "classification": "other",
+      "live_idx": [
+        0,
+        1,
+        3
+      ],
+      "live_fns": [
+        {
+          "var": 0,
+          "effect_rate": 0.0815,
+          "fn": "notA",
+          "fn_agreement": 0.9927
+        },
+        {
+          "var": 1,
+          "effect_rate": 0.332,
+          "fn": "B",
+          "fn_agreement": 0.7478
+        },
+        {
+          "var": 3,
+          "effect_rate": 0.2231,
+          "fn": "XOR",
+          "fn_agreement": 0.7534
+        }
+      ],
+      "effect_rates": [
+        0.0815,
+        0.332,
+        0.0,
+        0.2231
+      ],
+      "iia_1": 0.9609375,
+      "iia_2": 0.9296875,
+      "effective_k": 3,
+      "hard_widths": [
+        31,
+        31,
+        30,
+        30
+      ],
+      "recovery_score": 0.9736
+    },
+    {
+      "seed": 6,
+      "classification": "other",
+      "live_idx": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "live_fns": [
+        {
+          "var": 0,
+          "effect_rate": 0.3037,
+          "fn": "notA",
+          "fn_agreement": 0.7573
+        },
+        {
+          "var": 1,
+          "effect_rate": 0.1719,
+          "fn": "NAND",
+          "fn_agreement": 0.9985
+        },
+        {
+          "var": 2,
+          "effect_rate": 0.2329,
+          "fn": "notB",
+          "fn_agreement": 0.9966
+        },
+        {
+          "var": 3,
+          "effect_rate": 0.1074,
+          "fn": "A",
+          "fn_agreement": 0.9932
+        }
+      ],
+      "effect_rates": [
+        0.3037,
+        0.1719,
+        0.2329,
+        0.1074
+      ],
+      "iia_1": 1.0,
+      "iia_2": 0.984375,
+      "effective_k": 4,
+      "hard_widths": [
+        31,
+        31,
+        30,
+        30
+      ],
+      "recovery_score": 0.9951
+    },
+    {
+      "seed": 7,
+      "classification": "other",
+      "live_idx": [
+        0,
+        3
+      ],
+      "live_fns": [
+        {
+          "var": 0,
+          "effect_rate": 0.314,
+          "fn": "NOR",
+          "fn_agreement": 0.9797
+        },
+        {
+          "var": 3,
+          "effect_rate": 0.3242,
+          "fn": "AND",
+          "fn_agreement": 0.9985
+        }
+      ],
+      "effect_rates": [
+        0.314,
+        0.0,
+        0.0005,
+        0.3242
+      ],
+      "iia_1": 0.97265625,
+      "iia_2": 0.984375,
+      "effective_k": 2,
+      "hard_widths": [
+        31,
+        31,
+        30,
+        30
+      ],
+      "recovery_score": 0.8564
+    },
+    {
+      "seed": 8,
+      "classification": "other",
+      "live_idx": [
+        2,
+        3
+      ],
+      "live_fns": [
+        {
+          "var": 2,
+          "effect_rate": 0.3086,
+          "fn": "NAND",
+          "fn_agreement": 0.9988
+        },
+        {
+          "var": 3,
+          "effect_rate": 0.3237,
+          "fn": "OR",
+          "fn_agreement": 0.9822
+        }
+      ],
+      "effect_rates": [
+        0.0,
+        0.0181,
+        0.3086,
+        0.3237
+      ],
+      "iia_1": 0.98046875,
+      "iia_2": 0.9609375,
+      "effective_k": 3,
+      "hard_widths": [
+        31,
+        31,
+        30,
+        31
+      ],
+      "recovery_score": 0.7803
+    },
+    {
+      "seed": 9,
+      "classification": "other",
+      "live_idx": [
+        1,
+        2
+      ],
+      "live_fns": [
+        {
+          "var": 1,
+          "effect_rate": 0.3101,
+          "fn": "OR",
+          "fn_agreement": 0.9829
+        },
+        {
+          "var": 2,
+          "effect_rate": 0.3027,
+          "fn": "AND",
+          "fn_agreement": 0.9993
+        }
+      ],
+      "effect_rates": [
+        0.0,
+        0.3101,
+        0.3027,
+        0.0
+      ],
+      "iia_1": 0.984375,
+      "iia_2": 0.96875,
+      "effective_k": 2,
+      "hard_widths": [
+        31,
+        31,
+        30,
+        31
+      ],
+      "recovery_score": 0.749
+    }
+  ],
+  "aggregate": {
+    "class_counts": {
+      "atoms": 0,
+      "equivalent_basis": 0,
+      "output_copy": 0,
+      "other": 10
+    },
+    "iia_1_mean": 0.9633,
+    "iia_1_std": 0.0354,
+    "iia_2_mean": 0.9496,
+    "iia_2_std": 0.0546
+  }
+}

@@ -1,0 +1,474 @@
+{
+  "tag": "hier_l1_s0",
+  "config": {
+    "task": "hierarchical_equality",
+    "site_layer": 1,
+    "seed": 0,
+    "steps": 4000,
+    "k_max": 4,
+    "v": 2,
+    "device": "cpu",
+    "n_probe": 4096
+  },
+  "config_dataclass": {
+    "steps": 4000,
+    "batch_size": 64,
+    "n_sources": 2,
+    "lr": 0.001,
+    "lr_rotation": null,
+    "lr_causal": null,
+    "lambda_task": 1.0,
+    "lambda_sparse": 0.1,
+    "lambda_cf_symmetric": 0.5,
+    "gumbel_temp_start": 1.0,
+    "gumbel_temp_end": 0.1,
+    "mask_temp_start": 1.0,
+    "mask_temp_end": 0.1,
+    "anneal": "linear",
+    "swap_sizes": [
+      1,
+      2
+    ],
+    "swap_weights": [
+      0.5,
+      0.5
+    ],
+    "eval_every": 400,
+    "eval_batches": 4,
+    "eval_batch_size": 64,
+    "seed": 0,
+    "device": "cpu",
+    "freeze_rotation": false
+  },
+  "final": {
+    "iia_1": 0.9765625,
+    "iia_2": 0.98046875,
+    "effective_k": 2,
+    "aligned_dims": 122.46509552001953,
+    "hard_widths": [
+      31,
+      30,
+      31,
+      30
+    ]
+  },
+  "history": [
+    {
+      "step": 0,
+      "loss_total": 8.187923431396484,
+      "loss_cf": 6.393148422241211,
+      "loss_cf_sym": 0.6831257343292236,
+      "loss_task": 1.4032118320465088,
+      "loss_sparse": 0.5,
+      "tau_gumbel": 1.0,
+      "tau_mask": 1.0,
+      "iia_1": 0.4609375,
+      "iia_2": 0.6171875,
+      "effective_k": 0,
+      "aligned_dims": 128.00271606445312,
+      "hard_widths": [
+        32,
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "step": 400,
+      "loss_total": 5.739260673522949,
+      "loss_cf": 3.8519859313964844,
+      "loss_cf_sym": 0.635358989238739,
+      "loss_task": 1.519758939743042,
+      "loss_sparse": 0.498361736536026,
+      "tau_gumbel": 0.9099774943735934,
+      "tau_mask": 0.9099774956703186,
+      "iia_1": 0.59765625,
+      "iia_2": 0.63671875,
+      "effective_k": 4,
+      "aligned_dims": 127.57953643798828,
+      "hard_widths": [
+        32,
+        32,
+        32,
+        32
+      ]
+    },
+    {
+      "step": 800,
+      "loss_total": 3.15980863571167,
+      "loss_cf": 1.4124950170516968,
+      "loss_cf_sym": 0.4536210298538208,
+      "loss_task": 1.4708526134490967,
+      "loss_sparse": 0.4965032935142517,
+      "tau_gumbel": 0.8199549887471868,
+      "tau_mask": 0.8199549913406372,
+      "iia_1": 0.703125,
+      "iia_2": 0.7578125,
+      "effective_k": 4,
+      "aligned_dims": 127.10379028320312,
+      "hard_widths": [
+        32,
+        32,
+        31,
+        32
+      ]
+    },
+    {
+      "step": 1200,
+      "loss_total": 0.6818972826004028,
+      "loss_cf": 0.20055273175239563,
+      "loss_cf_sym": 0.1432308703660965,
+      "loss_task": 0.3602999746799469,
+      "loss_sparse": 0.4942915439605713,
+      "tau_gumbel": 0.7299324831207802,
+      "tau_mask": 0.7299324870109558,
+      "iia_1": 0.90625,
+      "iia_2": 0.93359375,
+      "effective_k": 2,
+      "aligned_dims": 126.53723907470703,
+      "hard_widths": [
+        32,
+        31,
+        32,
+        32
+      ]
+    },
+    {
+      "step": 1600,
+      "loss_total": 1.5955579280853271,
+      "loss_cf": 0.6982631683349609,
+      "loss_cf_sym": 0.4855385422706604,
+      "loss_task": 0.605319619178772,
+      "loss_sparse": 0.4920589029788971,
+      "tau_gumbel": 0.6399099774943735,
+      "tau_mask": 0.6399099826812744,
+      "iia_1": 0.9765625,
+      "iia_2": 0.98046875,
+      "effective_k": 2,
+      "aligned_dims": 125.965576171875,
+      "hard_widths": [
+        32,
+        31,
+        32,
+        31
+      ]
+    },
+    {
+      "step": 2000,
+      "loss_total": 0.6294524669647217,
+      "loss_cf": 0.24732886254787445,
+      "loss_cf_sym": 0.09402455389499664,
+      "loss_task": 0.2861441373825073,
+      "loss_sparse": 0.4896715581417084,
+      "tau_gumbel": 0.5498874718679669,
+      "tau_mask": 0.549887478351593,
+      "iia_1": 0.98828125,
+      "iia_2": 0.98828125,
+      "effective_k": 2,
+      "aligned_dims": 125.35438537597656,
+      "hard_widths": [
+        31,
+        32,
+        31,
+        31
+      ]
+    },
+    {
+      "step": 2400,
+      "loss_total": 0.29086968302726746,
+      "loss_cf": 0.05989060923457146,
+      "loss_cf_sym": 0.09284453839063644,
+      "loss_task": 0.1358344852924347,
+      "loss_sparse": 0.4872233271598816,
+      "tau_gumbel": 0.45986496624156037,
+      "tau_mask": 0.4598649740219116,
+      "iia_1": 0.98046875,
+      "iia_2": 0.98828125,
+      "effective_k": 2,
+      "aligned_dims": 124.72833251953125,
+      "hard_widths": [
+        31,
+        31,
+        32,
+        31
+      ]
+    },
+    {
+      "step": 2800,
+      "loss_total": 0.1456179916858673,
+      "loss_cf": 0.0005418465007096529,
+      "loss_cf_sym": 0.0019843135960400105,
+      "loss_task": 0.0956004410982132,
+      "loss_sparse": 0.4848354756832123,
+      "tau_gumbel": 0.3698424606151538,
+      "tau_mask": 0.3698424696922302,
+      "iia_1": 0.984375,
+      "iia_2": 0.984375,
+      "effective_k": 2,
+      "aligned_dims": 124.11588287353516,
+      "hard_widths": [
+        31,
+        31,
+        31,
+        31
+      ]
+    },
+    {
+      "step": 3200,
+      "loss_total": 0.10135152190923691,
+      "loss_cf": 0.00010409632523078471,
+      "loss_cf_sym": 0.0018981157336384058,
+      "loss_task": 0.05203048884868622,
+      "loss_sparse": 0.48267877101898193,
+      "tau_gumbel": 0.2798199549887471,
+      "tau_mask": 0.27981996536254883,
+      "iia_1": 0.984375,
+      "iia_2": 0.99609375,
+      "effective_k": 2,
+      "aligned_dims": 123.56443786621094,
+      "hard_widths": [
+        31,
+        31,
+        31,
+        31
+      ]
+    },
+    {
+      "step": 3600,
+      "loss_total": 0.4754028022289276,
+      "loss_cf": 0.22052736580371857,
+      "loss_cf_sym": 0.1041085422039032,
+      "loss_task": 0.1547735035419464,
+      "loss_sparse": 0.48047664761543274,
+      "tau_gumbel": 0.18979744936234055,
+      "tau_mask": 0.18979744613170624,
+      "iia_1": 0.98046875,
+      "iia_2": 0.98828125,
+      "effective_k": 2,
+      "aligned_dims": 123.00035095214844,
+      "hard_widths": [
+        31,
+        31,
+        31,
+        30
+      ]
+    },
+    {
+      "step": 3999,
+      "loss_total": 0.4003344476222992,
+      "loss_cf": 0.020647045224905014,
+      "loss_cf_sym": 0.120499387383461,
+      "loss_task": 0.27159950137138367,
+      "loss_sparse": 0.4783821702003479,
+      "tau_gumbel": 0.09999999999999998,
+      "tau_mask": 0.10000000149011612,
+      "iia_1": 0.98828125,
+      "iia_2": 0.984375,
+      "effective_k": 2,
+      "aligned_dims": 122.46509552001953,
+      "hard_widths": [
+        31,
+        30,
+        31,
+        30
+      ]
+    }
+  ],
+  "recovery_matrix": [
+    [
+      0.837890625,
+      0.591796875
+    ],
+    [
+      0.666015625,
+      0.556640625
+    ],
+    [
+      0.705078125,
+      0.755859375
+    ],
+    [
+      0.763671875,
+      0.712890625
+    ]
+  ],
+  "best_assignment": [
+    0,
+    2
+  ],
+  "recovery_score": 0.796875,
+  "refit_iia_1": 0.97265625,
+  "refit_iia_2": 0.98828125,
+  "hypothesis_names": [
+    "GT0_E1",
+    "GT1_E2",
+    "XOR(E1,E2)",
+    "label_y",
+    "const0"
+  ],
+  "agreement": [
+    {
+      "var": 0,
+      "width": 31,
+      "effect_rate": 0.0,
+      "agreement": {
+        "GT0_E1": 0.8484,
+        "GT1_E2": 0.563,
+        "XOR(E1,E2)": 0.5618,
+        "label_y": 0.5618,
+        "const0": 0.6602
+      }
+    },
+    {
+      "var": 1,
+      "width": 30,
+      "effect_rate": 0.0005,
+      "agreement": {
+        "GT0_E1": 0.675,
+        "GT1_E2": 0.5884,
+        "XOR(E1,E2)": 0.5212,
+        "label_y": 0.5212,
+        "const0": 0.5562
+      }
+    },
+    {
+      "var": 2,
+      "width": 31,
+      "effect_rate": 0.3091,
+      "agreement": {
+        "GT0_E1": 0.7388,
+        "GT1_E2": 0.7429,
+        "XOR(E1,E2)": 0.751,
+        "label_y": 0.751,
+        "const0": 0.7449
+      }
+    },
+    {
+      "var": 3,
+      "width": 30,
+      "effect_rate": 0.3174,
+      "agreement": {
+        "GT0_E1": 0.7468,
+        "GT1_E2": 0.7451,
+        "XOR(E1,E2)": 0.7458,
+        "label_y": 0.7458,
+        "const0": 0.7622
+      }
+    }
+  ],
+  "effect_rates": [
+    0.0,
+    0.0005,
+    0.3091,
+    0.3174
+  ],
+  "hard_widths": [
+    31,
+    30,
+    31,
+    30
+  ],
+  "effective_idx": [
+    2,
+    3
+  ],
+  "default_vals": [
+    0,
+    0,
+    1,
+    1
+  ],
+  "decoder_truth_table": [
+    {
+      "values": {
+        "Z2": 0,
+        "Z3": 0
+      },
+      "pred_label": 1,
+      "logits": [
+        -8.4044,
+        8.5241
+      ]
+    },
+    {
+      "values": {
+        "Z2": 0,
+        "Z3": 1
+      },
+      "pred_label": 1,
+      "logits": [
+        -2.982,
+        2.9365
+      ]
+    },
+    {
+      "values": {
+        "Z2": 1,
+        "Z3": 0
+      },
+      "pred_label": 1,
+      "logits": [
+        -4.1388,
+        4.019
+      ]
+    },
+    {
+      "values": {
+        "Z2": 1,
+        "Z3": 1
+      },
+      "pred_label": 0,
+      "logits": [
+        2.9425,
+        -3.0009
+      ]
+    }
+  ],
+  "pair_vs_gt": {
+    "i": 3,
+    "j": 2,
+    "cells": [
+      {
+        "E1": 0,
+        "E2": 0,
+        "n": 1041,
+        "modal_Zi_Zj": [
+          1,
+          0
+        ],
+        "purity": 0.9798
+      },
+      {
+        "E1": 0,
+        "E2": 1,
+        "n": 1044,
+        "modal_Zi_Zj": [
+          1,
+          1
+        ],
+        "purity": 0.9904
+      },
+      {
+        "E1": 1,
+        "E2": 0,
+        "n": 1037,
+        "modal_Zi_Zj": [
+          1,
+          1
+        ],
+        "purity": 0.9855
+      },
+      {
+        "E1": 1,
+        "E2": 1,
+        "n": 974,
+        "modal_Zi_Zj": [
+          0,
+          1
+        ],
+        "purity": 1.0
+      }
+    ]
+  },
+  "interpretation": "The effective learned variables do NOT both map cleanly onto {E1, E2}. Per-variable best matches among effective vars: Z2->XOR(E1,E2) (0.751), Z3->const0 (0.762). This suggests an alternative (possibly relabeled/rotated) but valid factorization rather than the literal GT atoms. Joint (Z3,Z2) vs (E1,E2): mean cell purity 0.989 (1.0 => the top-two variables jointly determine (E1,E2))."
+}

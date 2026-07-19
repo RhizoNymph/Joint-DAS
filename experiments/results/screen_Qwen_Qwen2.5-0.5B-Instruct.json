@@ -1,0 +1,114 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "n": 300,
+  "results": [
+    {
+      "template_id": 0,
+      "chat": false,
+      "accuracy": 0.29333333333333333,
+      "per_region": {
+        "below": 0.0,
+        "inside": 1.0,
+        "above": 0.0
+      },
+      "frac_yes_pred": 1.0,
+      "n": 300
+    },
+    {
+      "template_id": 0,
+      "chat": true,
+      "accuracy": 0.5033333333333333,
+      "per_region": {
+        "below": 0.62,
+        "inside": 0.5454545454545454,
+        "above": 0.36607142857142855
+      },
+      "frac_yes_pred": 0.5233333333333333,
+      "n": 300
+    },
+    {
+      "template_id": 1,
+      "chat": false,
+      "accuracy": 0.29333333333333333,
+      "per_region": {
+        "below": 0.0,
+        "inside": 1.0,
+        "above": 0.0
+      },
+      "frac_yes_pred": 1.0,
+      "n": 300
+    },
+    {
+      "template_id": 1,
+      "chat": true,
+      "accuracy": 0.29333333333333333,
+      "per_region": {
+        "below": 0.0,
+        "inside": 1.0,
+        "above": 0.0
+      },
+      "frac_yes_pred": 1.0,
+      "n": 300
+    },
+    {
+      "template_id": 2,
+      "chat": false,
+      "accuracy": 0.29333333333333333,
+      "per_region": {
+        "below": 0.0,
+        "inside": 1.0,
+        "above": 0.0
+      },
+      "frac_yes_pred": 1.0,
+      "n": 300
+    },
+    {
+      "template_id": 2,
+      "chat": true,
+      "accuracy": 0.3233333333333333,
+      "per_region": {
+        "below": 0.06,
+        "inside": 0.9886363636363636,
+        "above": 0.03571428571428571
+      },
+      "frac_yes_pred": 0.9633333333333334,
+      "n": 300
+    },
+    {
+      "template_id": 3,
+      "chat": false,
+      "accuracy": 0.7066666666666667,
+      "per_region": {
+        "below": 1.0,
+        "inside": 0.0,
+        "above": 1.0
+      },
+      "frac_yes_pred": 0.0,
+      "n": 300
+    },
+    {
+      "template_id": 3,
+      "chat": true,
+      "accuracy": 0.7066666666666667,
+      "per_region": {
+        "below": 1.0,
+        "inside": 0.0,
+        "above": 1.0
+      },
+      "frac_yes_pred": 0.0,
+      "n": 300
+    }
+  ],
+  "best": {
+    "template_id": 3,
+    "chat": false,
+    "accuracy": 0.7066666666666667,
+    "per_region": {
+      "below": 1.0,
+      "inside": 0.0,
+      "above": 1.0
+    },
+    "frac_yes_pred": 0.0,
+    "n": 300
+  }
+}

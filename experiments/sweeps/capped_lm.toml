@@ -1,0 +1,36 @@
+# Night-2 capped-LM wave (N2.2): the structural collapse fix at LM scale.
+# Per-dim sparsity + hard width cap (sparse_mode per_dim, max_width 128,
+# init_width 32, lambda_sparse 0.02) on Qwen2.5-1.5B l17, 1200 steps, no refit.
+#
+# Reconstructed from the committed result configs in experiments/results/night2/
+# (pt_{das_true,joint,random}_l17_capped.json) — the night-2 capped wave was
+# hand-run (no committed driver script), so this spec captures the core
+# 3-method layer-17 comparison that RESULTS.md N2.2 reports. The one-off
+# variants (z_digits, layer 10, k2, prune5x, seed-1 replicate) are NOT included
+# here as they had irregular per-run configs; run those individually with
+# `jdas run lm` if needed.
+
+[sweep]
+name = "night2_capped_lm"
+runner = "lm"
+out_dir = "night2_capped"
+out_pattern = "pt_{method}_l17_capped.json"
+
+[grid]
+method = ["das_true", "joint", "random_rotation"]
+
+[fixed]
+model = "Qwen/Qwen2.5-1.5B-Instruct"
+layer = 17
+template_id = 3
+device = "cuda"
+steps = 1200
+batch_size = 32
+k_max = 4
+max_width = 128
+init_width = 32
+sparse_mode = "per_dim"
+lambda_sparse = 0.02
+no_refit = true
+local_files_only = true
+seed = 0
